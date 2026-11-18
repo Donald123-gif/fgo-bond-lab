@@ -27,10 +27,26 @@ $('grandToggle').onchange=()=>{if($('grandToggle').checked)$('grandMode').value=
 function changed(){state.locked=[...new Set(state.manualSlots.filter(s=>s.servantLocked||!s.autoServant).map(s=>s.servantId).filter(Boolean))];updateGrand();save();dirty=true;if(worker){worker.terminate();worker=null;$('calculate').disabled=false;$('cancel').hidden=true;$('status').textContent='条件已变更，请重新计算。'}$('resultBadge').textContent='当前编队 · 可重新优化';renderParty();renderPools();}
 function notify(msg){(document.querySelector('dialog[open]:last-of-type')||document.querySelector('dialog[open]')||document.body).append($('toast'));$('toast').textContent=msg;$('toast').hidden=false;clearTimeout(notify.timer);notify.timer=setTimeout(()=>$('toast').hidden=true,3500)}
 function tags(s,v){const chosen=s.variants.find(v=>v.key===state.forms[s.id]);return (v||chosen?.traits||s.traits).filter(t=>traits[t]).map(t=>`<span class="tag ${t===2821?'special':''}">${traits[t]}</span>`).join('')}
+function fixedRewardUses(id) {
+ return Boolean(id) && $('grandMode').value !== 'off' && Number($('grandReward').value) === id;
+}
 function renderParty(){
  const n=+$('count').value,on=$('grandMode').value!=='off',grandId=+$('grandId').value;
  if(on&&grandId&&!state.manualSlots.some(sl=>sl.servantId===grandId)){const empty=state.manualSlots.slice(0,n).find(sl=>!sl.servantId);if(empty)empty.servantId=grandId;}
  let crownIndex=state.manualSlots.findIndex(sl=>sl.servantId&&sl.servantId===grandId);if(on&&crownIndex<0&&!grandId)crownIndex=Math.max(0,state.manualSlots.slice(0,n).findIndex(sl=>!sl.servantId));
+ if (on) {
+  const reward = $('grandReward');
+  const active = state.manualSlots.slice(0,n);
+  if (active.some(slot => fixedRewardUses(slot.ceId))) {
+   reward.value = 'auto';
+   state.resolvedReward = 0;
+   notify('普通槽已装备同一张礼装，冠位报酬槽已恢复自动选优。');
+   save();
+  } else if (reward.value === 'auto' && state.resolvedReward && active.some(slot => slot.ceId === state.resolvedReward)) {
+   state.resolvedReward = 0;
+   save();
+  }
+ }
  let fixed=0;
  function normalCE(c,i,support=false){return `<div class="equipment-row"><span class="equipment-label">概念礼装</span><button class="ce-slot ${c?'filled':''}" data-pick="${support?'support':'ce'}" ${support?'':`data-slot="${i}"`} ${!support&&i>=n?'disabled':''} title="${esc(c?.name||'选择礼装')}" aria-label="${support?'助战':'第'+(i+1)+'位'}礼装：${esc(c?.name||'未装备')}">${c?ceSlotArt(c,support?0:c.cost,support?$('supportMlb').checked:undefined):'<span class="ce-plus">＋</span><small>选择礼装</small>'}</button></div>`}
  function extras(support=false){const key=support?'supportReward':'grandReward',c=getCE($(key).value==='auto'?state.resolvedReward:$(key).value);return `<div class="equipment-row extra-equipment"><span class="equipment-label">报酬礼装 <em>COST 0</em></span><button class="ce-slot ${c?'filled':''}" data-grand-pick="${key}" title="${esc(c?.name||'选择报酬礼装')}" aria-label="${support?'助战':'自有'}报酬礼装：${esc(c?.name||'自动或未装备')}">${c?ceSlotArt(c,0,support?$('supportRewardMlb').checked:undefined):`<span class="ce-plus">${$(key).value==='auto'?'✧':'＋'}</span><small>${$(key).value==='auto'?'自动选优':'选择礼装'}</small>`}</button>${support?'':'<button class="reward-auto" data-auto-reward>自动选优</button>'}</div><div class="equipment-row extra-equipment"><span class="equipment-label">牵绊礼装 <em>COST 0</em></span>${support?'<div class="bond-slot"><span>◇</span><small>助战自身十绊</small></div>':`<label class="bond-slot"><span>◇</span><select data-grand-bond aria-label="自身牵绊礼装效果">${[...$('grandBond').options].map(o=>`<option value="${o.value}" ${o.selected?'selected':''}>${{none:'未装备',np:'开局 NP50%',original:'原有效果'}[o.value]}</option>`).join('')}</select></label>`}</div>`}
@@ -41,7 +57,12 @@ function renderParty(){
 }
 function renderPools(){$('servantCount').textContent=`${state.owned.length} 位候选`;$('ceCount').textContent=`${Object.values(state.ces).filter(c=>c.enabled).length} / 12 种`;$('poolSummary').innerHTML=D.ces.filter(c=>state.ces[c.id]?.enabled).map(c=>`<span class="chip">${esc(c.name)}${state.ces[c.id].required?' · 必带':''}</span>`).join('');fillGrand();}
 $('partyGrid').onclick=e=>{if(Date.now()<dragClickUntil||e.target.closest('[data-drag],[data-lock]'))return;const crown=e.target.closest('[data-crown]');if(crown){$('grandId').value=crown.dataset.crown;changed();return}if(e.target.closest('[data-auto-reward]')){$('grandReward').value='auto';changed();return}const b=e.target.closest('[data-pick],[data-grand-pick]');if(!b)return;const target=b.dataset.grandPick||b.dataset.pick;openPicker(['servant','supportServant','grandServant'].includes(target)?'servant':'ce',{target,index:b.hasAttribute('data-slot')?+b.dataset.slot:undefined})};
-$('partyGrid').onchange=e=>{if(e.target.dataset.svtLevel){state.svtLevels[e.target.dataset.svtLevel]=Math.max(1,Math.min(120,Math.trunc(+e.target.value)||1));save();return}if(e.target.hasAttribute('data-grand-bond')){$('grandBond').value=e.target.value;changed()}else if(e.target.dataset.form){state.forms[+e.target.dataset.form]=e.target.value;changed()}};
+$('partyGrid').onchange=e=>{if(e.target.dataset.svtLevel){const input = e.target;
+ const level = Math.max(1, Math.min(120, Math.trunc(+input.value) || 1));
+ input.value = level;
+ state.svtLevels[input.dataset.svtLevel] = level;
+ save();
+ return}if(e.target.hasAttribute('data-grand-bond')){$('grandBond').value=e.target.value;changed()}else if(e.target.dataset.form){state.forms[+e.target.dataset.form]=e.target.value;changed()}};
 $('manageServants').onclick=()=>openPicker('servant',{target:'pool'});$('manageCes').onclick=()=>openPicker('ce',{target:'cePool'});
 $('clearParty').onclick=()=>{state.manualSlots=initial().manualSlots;$('grandId').value='0';state.resolvedReward=0;changed()};
 function request(){let o={...inputs(),...state,ces:structuredClone(state.ces),manualSlots:state.manualSlots.map(sl=>({...sl,servantId:sl.autoServant&&!sl.servantLocked?0:sl.servantId,ceId:sl.autoCE&&!sl.ceLocked?0:sl.ceId}))};for(const id of ['level','cost','base','count','front','support','extra','tea','reserveSlots','reserveCost','grandId','supportReward'])o[id]=+$(id).value;for(const id of ids){const el=$(id);if(el.type==='number'&&!el.checkValidity())throw Error('请检查输入范围：'+el.parentElement.textContent.trim())}o.front=state.order.slice(0,3).filter(i=>i<o.count).length;if(o.front>o.count)throw Error('自有前排人数不能超过自有从者人数。');if(o.manualSlots.slice(o.count).some(s=>s.servantId||s.ceId))throw Error('未出击的卡位仍有固定配置，请清空对应槽位或增加自有从者人数。');

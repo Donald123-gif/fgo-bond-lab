@@ -24,7 +24,11 @@ function updateBoardTotals(){
 }
 function swapBoard(a,b){if(a===b)return;[state.order[a],state.order[b]]=[state.order[b],state.order[a]];changed();$('status').textContent=`已交换 ${a+1} 与 ${b+1} 号整槽，从者与礼装同步移动。`;}
 function ceAt(idx){if(idx===5)return {id:state.supportCombatCe||+$('support').value,mlb:$('supportMlb').checked,locked:!!state.supportCeLocked};const sl=state.manualSlots[idx];return {id:sl.ceId,mlb:state.ces[sl.ceId]?.mlb??state.ceMlb?.[sl.ceId]??false,locked:!!sl.ceLocked}}
-function swapEquipment(a,b){if(a===b)return;const ai=state.order[a],bi=state.order[b];if([ai,bi].some(i=>i!==5&&i>=+$('count').value)){notify('未出击槽位不能交换礼装。');return}const left=ceAt(ai),right=ceAt(bi),next=state.manualSlots.map(sl=>sl.ceId);if(ai!==5)next[ai]=right.id;if(bi!==5)next[bi]=left.id;const ids=next.filter(Boolean);if(new Set(ids).size!==ids.length){notify('交换后自有礼装会重复，每种礼装按一张计算。');return}
+function swapEquipment(a,b){if(a===b)return;const ai=state.order[a],bi=state.order[b];if([ai,bi].some(i=>i!==5&&i>=+$('count').value)){notify('未出击槽位不能交换礼装。');return}const left=ceAt(ai),right=ceAt(bi),next=state.manualSlots.map(sl=>sl.ceId);if(ai!==5)next[ai]=right.id;if(bi!==5)next[bi]=left.id;if ((ai !== 5 && fixedRewardUses(right.id)) || (bi !== 5 && fixedRewardUses(left.id))) {
+  notify('交换后的普通槽会与冠位报酬槽使用同一张礼装。');
+  return;
+ }
+ const ids=next.filter(Boolean);if(new Set(ids).size!==ids.length){notify('交换后自有礼装会重复，每种礼装按一张计算。');return}
  function put(i,c){if(i===5){state.supportCombatCe=c.id&&!getBond(c.id)?c.id:0;$('support').value=getBond(c.id)?String(c.id):'0';$('supportMlb').checked=c.mlb;state.supportCeLocked=c.locked;return}const sl=state.manualSlots[i];sl.ceId=c.id;sl.autoCE=false;sl.ceLocked=c.locked;sl.reservedCombat=false;if(c.id){state.ceMlb={...state.ceMlb,[c.id]:c.mlb};if(getBond(c.id)){state.ces[c.id].enabled=true;state.ces[c.id].mlb=c.mlb}}}
  put(ai,right);put(bi,left);changed();$('status').textContent=`仅交换 ${a+1} 与 ${b+1} 号普通礼装，从者位置不变。`;
 }
