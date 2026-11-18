@@ -477,3 +477,61 @@ dialog #toast { position: absolute; }
   .drop-target, .ce-drop-target { outline-color: Highlight; }
   .position-lock.locked, .filter-option input:checked + span { border-color: Highlight; }
 }
+
+.mobile-dock, .mobile-board-tools, .mobile-row-links { display: none; }
+
+@media (max-width: 700px), (pointer: coarse) and (max-width: 950px) {
+  html { scroll-padding-bottom: calc(68px + env(safe-area-inset-bottom)); }
+  body { padding-bottom: calc(68px + env(safe-area-inset-bottom)); }
+  body:has(dialog[open]) { overflow: hidden; }
+  .intro { display: none; }
+  .data-line { margin-top: 12px; }
+  .party-bar > span:first-child, .party-footer p { display: none; }
+  .party-bar { justify-content: space-between; margin: 0; }
+  .mobile-row-links { display: flex; gap: 4px; }
+  .mobile-row-links button { min-height: 44px; font-size: 12px; padding-inline: 9px; }
+  .servant-slot .card-name { font-size: 14px; }
+  .equipment-label, .slot-bond small, .ce-numbers small, .board-form { font-size: 11px; }
+  .ce-numbers .mlb, .ce-numbers .unbroken { font-size: 10px; }
+  .mobile-board-tools { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0 8px; }
+  #touchHint { font-size: 12px; color: #becfe2; }
+  #reorderTouch { min-height: 44px; padding-inline: 12px; font-size: 13px; }
+  #reorderTouch[aria-pressed=true] { color: var(--gold-light); border-color: var(--gold-mid); }
+  .board-scroll { padding-inline: 0; scroll-behavior: auto; }
+  .lineup-labels, #partyGrid { width: calc(300% + 20px); min-width: 0; }
+  .party-slot .servant-slot, .party-slot [data-pick="ce"], .party-slot [data-pick="support"] { touch-action: pan-x pan-y pinch-zoom; }
+  .touch-reorder .party-slot .servant-slot, .touch-reorder .party-slot [data-pick="ce"], .touch-reorder .party-slot [data-pick="support"] { touch-action: none; }
+  .position-lock, .drag-handle, .close-button { min-width: 44px; min-height: 44px; }
+  .grand-toggle, .party-footer button, .slot-form:not(.placeholder), .filter-option > span { min-height: 44px; }
+  .servant-level { height: auto; min-height: 40px; }
+  .servant-level input { min-height: 38px; font-size: 16px; width: 52px; }
+  .slot-form, .settings input:not([type=checkbox]), .settings select, #pickerSearch, #pickerSort { font-size: 16px; }
+  .mobile-dock { display: grid; grid-template-columns: 1fr 1fr 1fr 1.6fr; gap: 4px; position: fixed; inset: auto 0 0; z-index: 9; padding: 6px max(10px, env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)); border-top: 1px solid #998456; background: #08172c; box-shadow: 0 -4px 16px #03081388; }
+  .mobile-dock button { min-height: 44px; padding: 4px; font-size: 14px; }
+  #mobileCalculate { background: var(--gold-gradient); color: #201b15; font-weight: 700; }
+  body:has(dialog[open]) .mobile-dock, body:has(.settings input:focus) .mobile-dock { display: none; }
+  .settings, .party-panel, .pool-panel { scroll-margin-top: 8px; }
+  #pickerDialog, #filterDialog { width: 100%; max-width: 100%; max-height: 100dvh; margin: auto; border-inline: 0; }
+  .picker-shell { height: 100dvh; }
+  .filter-shell { max-height: 100dvh; }
+  .picker-header { padding: max(6px, env(safe-area-inset-top)) 12px 6px; }
+  .picker-header .eyebrow { display: none; }
+  .picker-header h2 { margin: 0; }
+  .picker-toolbar { margin-top: 8px; gap: 5px; }
+  .picker-toolbar button, .picker-toolbar select, #pickerSearch, .picker-info button, .filter-footer button, .picker-bottom button { min-height: 44px; }
+  .picker-info { padding-block: 2px; }
+  #pickerNotice { margin-block: 3px; font-size: 11px; }
+  .picker-bottom, .filter-footer { padding: 6px 8px max(6px, env(safe-area-inset-bottom)); gap: 5px; }
+  .picker-bottom button { font-size: 12px; padding-inline: 7px; }
+  .collection-name { font-size: 13px; line-height: 1.4; min-height: 2.8em; }
+  .collection-meta, .ce-effect { font-size: 11px; }
+  #pickerDialog[data-kind=ce] .picker-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .ce-card-settings label, .tiny-check { min-height: 42px; font-size: 12px; }
+  .ce-card-settings input[type=number] { min-height: 38px; width: 45px; font-size: 16px; }
+  .picker-info button, .filter-option > span { font-size: 12px; }
+}
+@media (max-height: 510px) and (pointer: coarse) {
+  .picker-shell { overflow-y: auto; }
+  .picker-shell > .picker-grid { flex: 1 0 auto; overflow: visible; }
+  .picker-bottom { position: sticky; bottom: 0; z-index: 2; }
+}

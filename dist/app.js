@@ -68,10 +68,32 @@ $('clearParty').onclick=()=>{state.manualSlots=initial().manualSlots;$('grandId'
 function request(){let o={...inputs(),...state,ces:structuredClone(state.ces),manualSlots:state.manualSlots.map(sl=>({...sl,servantId:sl.autoServant&&!sl.servantLocked?0:sl.servantId,ceId:sl.autoCE&&!sl.ceLocked?0:sl.ceId}))};for(const id of ['level','cost','base','count','front','support','extra','tea','reserveSlots','reserveCost','grandId','supportReward'])o[id]=+$(id).value;for(const id of ids){const el=$(id);if(el.type==='number'&&!el.checkValidity())throw Error('请检查输入范围：'+el.parentElement.textContent.trim())}o.front=state.order.slice(0,3).filter(i=>i<o.count).length;if(o.front>o.count)throw Error('自有前排人数不能超过自有从者人数。');if(o.manualSlots.slice(o.count).some(s=>s.servantId||s.ceId))throw Error('未出击的卡位仍有固定配置，请清空对应槽位或增加自有从者人数。');
  o.locked=state.manualSlots.filter(s=>s.servantLocked||!s.autoServant).map(s=>s.servantId).filter(Boolean);if(new Set(o.locked).size!==o.locked.length)throw Error('自有从者不能重复入队。');o.order=[...state.order];o.lockedFront=Object.fromEntries(state.manualSlots.map((sl,i)=>[sl,i]).filter(([sl])=>sl.servantLocked&&sl.servantId).map(([sl,i])=>[sl.servantId,state.order.indexOf(i)<3]));o.fixedNormalCes=[];o.manualCombatSlots=[];const seen=new Set();for(const [index,sl] of o.manualSlots.entries()){if(!sl.ceId)continue;const c=getCE(sl.ceId);if(seen.has(c.id))throw Error('每种自有礼装按一张建模，不能重复装备。');seen.add(c.id);if(getBond(c.id)){o.ces[c.id].enabled=true;o.ces[c.id].required=true;o.fixedNormalCes.push(c.id)}else{o.reserveSlots++;o.reserveCost+=c.cost;o.manualCombatSlots.push({index,servantId:sl.servantId,ceId:c.id})}}
  if(o.reserveSlots>o.count)throw Error('已选战斗礼装与额外预留槽位超过自有从者人数。');if(Object.values(o.ces).filter(x=>x.enabled).length>12)throw Error('候选牵绊礼装最多12种（含固定槽位），请在候选配置中减少一种。');if(o.grandMode==='duel'&&state.supportServant&&!BondSolver.grandGroups[o.grandGroup].includes(getSvt(state.supportServant).class))throw Error('所选助战从者不符合当前戴冠战职阶限制。');return o;}
-$('calculate').onclick=()=>{try{const o=request();worker?.terminate();worker=new Worker('worker.js?v=7');$('calculate').disabled=true;$('cancel').hidden=false;$('status').textContent='正在搜索符合限制的队伍…';worker.onmessage=({data})=>{if(data.progress){$('status').textContent=`已搜索 ${data.progress.toLocaleString()} 种礼装组合…`;return}$('calculate').disabled=false;$('cancel').hidden=true;worker.terminate();worker=null;if(data.error){showError(data.error);return}last={result:data.result,options:o};dirty=false;renderResult();$('status').textContent=`完成：已搜索 ${data.result.checked.toLocaleString()} 种礼装组合。`;save()};worker.onerror=()=>{showError('计算线程启动失败，请刷新后重试。');$('calculate').disabled=false;$('cancel').hidden=true;worker?.terminate();worker=null};worker.postMessage(o)}catch(e){showError(e.message)}};
+$('calculate').onclick=()=>{try{const o=request();worker?.terminate();worker=new Worker('worker.js?v=7');$('calculate').disabled=true;$('cancel').hidden=false;$('status').textContent='正在搜索符合限制的队伍…';worker.onmessage=({data})=>{if(data.progress){$('status').textContent=`已搜索 ${data.progress.toLocaleString()} 种礼装组合…`;return}$('calculate').disabled=false;$('cancel').hidden=true;worker.terminate();worker=null;if(data.error){showError(data.error);return}last={result:data.result,options:o};dirty=false;renderResult();
+ if (phoneLayout.matches) document.querySelector('.board-summary').scrollIntoView({block:'center'});
+ $('status').textContent=`完成：已搜索 ${data.result.checked.toLocaleString()} 种礼装组合。`;save()};worker.onerror=()=>{showError('计算线程启动失败，请刷新后重试。');$('calculate').disabled=false;$('cancel').hidden=true;worker?.terminate();worker=null};worker.postMessage(o)}catch(e){showError(e.message)}};
 function showError(msg){$('status').textContent=msg;$('resultBadge').textContent='需要调整条件';notify(msg)}
 $('cancel').onclick=()=>{worker?.terminate();worker=null;$('calculate').disabled=false;$('cancel').hidden=true;$('status').textContent='计算已停止。'};
 $('reset').onclick=()=>{localStorage.removeItem('chaldea-bond-v1');location.reload()};
 $('counts').textContent=`${D.servants.length} 位从者 · ${D.catalogCes.length.toLocaleString()} 张礼装`;$('dataDate').textContent=D.retrieved.replaceAll('-','.');renderParty();renderPools();updateGrand();
 
 function ceSlotArt(c,cost,mlb){mlb=mlb??state.ces[c.id]?.mlb??state.ceMlb?.[c.id]??false;return `<span class="ce-compact"><img src="${esc(c.image)}" alt=""><span class="ce-numbers"><small>Lv.${state.ceLevels[c.id]||1} · COST ${cost}</small><small class="${mlb?'mlb':'unbroken'}">${mlb?'◆ ◆ ◆ ◆ 满破':'◇ ◇ ◇ ◇ 未满破'}</small></span></span>`}
+
+const mobilePanels = {party: '.party-panel', settings: '.settings', pool: '.pool-panel'};
+for (const button of document.querySelectorAll('[data-mobile-link]')) {
+ button.onclick = () => document.querySelector(mobilePanels[button.dataset.mobileLink]).scrollIntoView({block:'start'});
+}
+const quickCalculate = $('mobileCalculate');
+quickCalculate.onclick = () => $('calculate').click();
+new MutationObserver(() => {
+ quickCalculate.disabled = $('calculate').disabled;
+ quickCalculate.textContent = quickCalculate.disabled ? '计算中…' : '计算最优';
+}).observe($('calculate'), {attributes:true, attributeFilter:['disabled']});
+
+for (const button of document.querySelectorAll('[data-jump-slot]')) {
+ button.onclick = () => {
+  const panel = document.querySelector('.board-scroll');
+  const slot = $('partyGrid').children[Number(button.dataset.jumpSlot)];
+  const offset = slot.getBoundingClientRect().left - panel.getBoundingClientRect().left;
+  panel.scrollLeft += offset;
+ };
+}

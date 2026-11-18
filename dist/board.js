@@ -32,10 +32,22 @@ function swapEquipment(a,b){if(a===b)return;const ai=state.order[a],bi=state.ord
  function put(i,c){if(i===5){state.supportCombatCe=c.id&&!getBond(c.id)?c.id:0;$('support').value=getBond(c.id)?String(c.id):'0';$('supportMlb').checked=c.mlb;state.supportCeLocked=c.locked;return}const sl=state.manualSlots[i];sl.ceId=c.id;sl.autoCE=false;sl.ceLocked=c.locked;sl.reservedCombat=false;if(c.id){state.ceMlb={...state.ceMlb,[c.id]:c.mlb};if(getBond(c.id)){state.ces[c.id].enabled=true;state.ces[c.id].mlb=c.mlb}}}
  put(ai,right);put(bi,left);changed();$('status').textContent=`仅交换 ${a+1} 与 ${b+1} 号普通礼装，从者位置不变。`;
 }
+const phoneLayout = matchMedia('(max-width: 700px), (pointer: coarse) and (max-width: 950px)');
+const reorderButton = document.getElementById('reorderTouch');
+function setTouchReorder(enabled) {
+ document.body.classList.toggle('touch-reorder', enabled);
+ reorderButton.setAttribute('aria-pressed', String(enabled));
+ reorderButton.textContent = enabled ? '完成换位' : '调整站位';
+ document.getElementById('touchHint').textContent = enabled ? '拖从者换整组，拖礼装只换礼装' : '左右滑动查看 1–6 位';
+}
+reorderButton.onclick = () => setTouchReorder(!document.body.classList.contains('touch-reorder'));
+phoneLayout.addEventListener('change', () => setTouchReorder(false));
 let boardDrag=null,keyboardSource=null;
 function dragSource(target){const row=target.closest('[data-position]');if(!row||target.closest('[data-lock],input,select,details,[data-crown],[data-auto-reward],.extra-equipment,.bond-slot'))return null;const ce=target.closest('[data-pick="ce"],[data-pick="support"]');return {row,handle:ce||target.closest('.servant-slot,[data-drag]')||row,type:ce?'ce':'whole'}}
 document.addEventListener('dragstart',e=>{if(e.target.closest('#partyGrid'))e.preventDefault()});
-document.addEventListener('pointerdown',e=>{dragClickUntil=0;const src=dragSource(e.target);if(!src||e.button!==0)return;boardDrag={start:+src.row.dataset.position,target:+src.row.dataset.position,type:src.type,x:e.clientX,y:e.clientY,moved:false,id:e.pointerId,handle:src.handle};src.handle.setPointerCapture(e.pointerId);});
+document.addEventListener('pointerdown',e=>{dragClickUntil=0;
+ if (e.pointerType === 'touch' && phoneLayout.matches && !document.body.classList.contains('touch-reorder') && !e.target.closest('[data-drag]')) return;
+ const src=dragSource(e.target);if(!src||e.button!==0)return;boardDrag={start:+src.row.dataset.position,target:+src.row.dataset.position,type:src.type,x:e.clientX,y:e.clientY,moved:false,id:e.pointerId,handle:src.handle};src.handle.setPointerCapture(e.pointerId);});
 document.addEventListener('pointermove',e=>{if(!boardDrag||boardDrag.id!==e.pointerId)return;const d=boardDrag;if(Math.hypot(e.clientX-d.x,e.clientY-d.y)>8)d.moved=true;if(!d.moved)return;d.handle.classList.add('drag-origin');const sc=document.querySelector('.board-scroll'),rect=sc.getBoundingClientRect();if(e.clientX<rect.left+35)sc.scrollLeft-=18;if(e.clientX>rect.right-35)sc.scrollLeft+=18;const row=document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-position]');document.querySelectorAll('.drop-target,.ce-drop-target').forEach(el=>el.classList.remove('drop-target','ce-drop-target'));d.target=row?+row.dataset.position:d.start;if(row){const dest=d.type==='ce'?row.querySelector('[data-pick="ce"],[data-pick="support"]'):row;dest?.classList.add(d.type==='ce'?'ce-drop-target':'drop-target')}});
 function stopBoardDrag(e,cancel=false){if(!boardDrag)return;const d=boardDrag;boardDrag=null;document.querySelectorAll('.drag-origin,.drop-target,.ce-drop-target').forEach(el=>el.classList.remove('drag-origin','drop-target','ce-drop-target'));if(d.moved){dragClickUntil=Date.now()+500;if(!cancel)(d.type==='ce'?swapEquipment:swapBoard)(d.start,d.target)}}
 document.addEventListener('pointerup',e=>stopBoardDrag(e));document.addEventListener('pointercancel',e=>stopBoardDrag(e,true));
