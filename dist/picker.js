@@ -1,6 +1,6 @@
 let picker=null,filterDraft=null;const filtersByKind={servant:FGOSelection.emptyFilters(),ce:FGOSelection.emptyFilters()},sortByKind={servant:'number',ce:'levelDesc'};
-try{const p=JSON.parse(localStorage.getItem('fgo-picker-preferences'));for(const kind of ['servant','ce']){for(const key of Object.keys(filtersByKind[kind]))if(Array.isArray(p?.filters?.[kind]?.[key]))filtersByKind[kind][key]=p.filters[kind][key];if(['number','rarityDesc','costAsc','costDesc','levelDesc','levelAsc'].includes(p?.sort?.[kind]))sortByKind[kind]=p.sort[kind]}}catch{}
-function persistPicker(){try{localStorage.setItem('fgo-picker-preferences',JSON.stringify({filters:filtersByKind,sort:sortByKind}))}catch{}}
+try{const p=JSON.parse(localStorage.getItem(pickerStorageKey));for(const kind of ['servant','ce']){for(const key of Object.keys(filtersByKind[kind]))if(Array.isArray(p?.filters?.[kind]?.[key]))filtersByKind[kind][key]=p.filters[kind][key];if(['number','rarityDesc','costAsc','costDesc','levelDesc','levelAsc'].includes(p?.sort?.[kind]))sortByKind[kind]=p.sort[kind]}}catch{}
+function persistPicker(){try{localStorage.setItem(pickerStorageKey,JSON.stringify({filters:filtersByKind,sort:sortByKind}))}catch{}}
 
 function supportEquipment(target) {
  if (target === 'support') return { id: state.supportCombatCe || +$('support').value, mlb: $('supportMlb').checked };

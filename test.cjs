@@ -65,3 +65,18 @@ const placed=place({team:[{id:2,front:true,variant:'base'},{id:3,front:true,vari
 assert.equal(placed[2].servantId,1);assert.equal(placed[2].servantLocked,true);assert.equal(placed[0].ceId,99);assert.equal(placed[0].ceLocked,true);assert.equal(placed[2].autoForm,'ascension3');assert.equal(new Set(placed.slice(0,3).map(s=>s.servantId)).size,3);
 assert.throws(()=>solve(crownData,{...co,front:0,locked:[1],lockedFront:{1:true}}),/没有可行/);
 console.log('Position-lock tests passed: 20 constrained exhaustive comparisons, exact slot placement, independent CE lock, impossible front lock.');
+
+const cnCatalog = globalThis.FGO_DATA;
+require('./dist/data-jp.js');
+const jpCatalog = globalThis.FGO_DATA;
+assert.equal(cnCatalog.region, 'CN');
+assert.equal(jpCatalog.region, 'JP');
+assert.ok(jpCatalog.servants.some(jp => !cnCatalog.servants.some(cn => cn.id === jp.id)));
+const chaoticKnights = jpCatalog.ces.find(ce => ce.id === 2509);
+assert.ok(chaoticKnights.aliases.includes('迦勒底之人'));
+const jpEffect = chaoticKnights.effects.find(effect => effect.mlb);
+assert.equal(jpEffect.rate, 20);
+assert.ok(matches([301, 2858], jpEffect));
+assert.equal(matches([301], jpEffect), false);
+assert.equal(jpCatalog.masterCosts[200], 118);
+console.log('Regional snapshots, JP search alias, conditional CE and Master Cost passed.');

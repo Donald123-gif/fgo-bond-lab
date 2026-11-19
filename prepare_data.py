@@ -1,9 +1,19 @@
-import json,urllib.request,pathlib,datetime
+import argparse, json, urllib.request, pathlib, datetime
 ROOT=pathlib.Path(__file__).parent
-sources={k:'https://api.atlasacademy.io/export/CN/nice_'+v+'.json' for k,v in [('servants','servant_lore'),('ces','equip')]}
-def get(k):
- p=pathlib.Path('/tmp/fgo-'+('servants-lore' if k=='servants' else 'ce')+'.json')
- return json.loads(p.read_text()) if p.exists() else json.load(urllib.request.urlopen(sources[k]))
+parser = argparse.ArgumentParser()
+parser.add_argument('--region', choices=('CN','JP'), default='CN')
+parser.add_argument('--cache-dir', type=pathlib.Path, help='Directory of region-prefixed Atlas JSON exports')
+args = parser.parse_args()
+region = args.region
+exports = {'servants':'nice_servant_lore','ces':'nice_equip','levels':'NiceUserLevel'}
+sources = {key:f'https://api.atlasacademy.io/export/{region}/{name}.json' for key,name in exports.items()}
+def get(key):
+ if args.cache_dir:
+  path = args.cache_dir / f'{region}-{exports[key]}.json'
+  if path.exists():
+   return json.loads(path.read_text(encoding='utf8'))
+ with urllib.request.urlopen(sources[key], timeout=180) as response:
+  return json.load(response)
 aliases=json.loads((ROOT/'aliases.json').read_text(encoding='utf8'))
 servants=[]
 for s in get('servants'):
@@ -52,7 +62,7 @@ for e in get('ces'):
   if typ=='servantFriendshipUp':kinds.add('bond')
   if typ in ['qpDropUp','expUp','userEquipExpUp','friendPointUpDuplicate']:kinds.add('reward')
   if any(v.get('EventId') for v in f.get('svals',[])) or any(sk.get('eventId') for sk in e.get('skillSvts',[])):kinds.add('event')
- if any('活动限定' in sk.get('detail','') for sk in e['skills']):kinds.add('event')
+ if any(term in sk.get('detail','') for sk in e['skills'] for term in ('活动限定','イベント限定')):kinds.add('event')
  record={'id':e['collectionNo'],'name':e['name'],'rarity':e['rarity'],'cost':e['cost'],'maxLevel':e['lvMax'],'aliases':aliases['ces'].get(str(e['collectionNo']),[]),'effectTypes':sorted(kinds),'detail':e['skills'][0].get('detail','') if e['skills'] else '无效果','image':next(iter(e['extraAssets'].get('faces',{}).get('equip',{}).values()),''),'art':next(iter(e['extraAssets'].get('charaGraph',{}).get('equip',{}).values()),'')}
  catalog.append(record)
  effects=[]
@@ -68,6 +78,16 @@ for e in get('ces'):
  if not effects:continue
  ces.append({**record,'effects':effects})
 ces.sort(key=lambda c:(-max(e['rate'] for e in c['effects']),c['id']))
-d={'region':'CN','retrieved':datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).date().isoformat(),'sources':sources,'servants':sorted(servants,key=lambda s:s['no']),'ces':ces,'catalogCes':sorted(catalog,key=lambda c:c['id'])}
-(ROOT/'dist'/'data.js').write_text('globalThis.FGO_DATA='+json.dumps(d,ensure_ascii=False,separators=(',',':'))+';',encoding='utf8')
+if region == 'JP':
+ # CN names are search aliases only. Stats, traits and effects always come from JP.
+ cn_file = (ROOT/'dist'/'data.js').read_text(encoding='utf8')
+ cn = json.loads(cn_file.removeprefix('globalThis.FGO_DATA=').removesuffix(';'))
+ for rows, reference in [(servants,cn['servants']), (catalog,cn['catalogCes']), (ces,cn['catalogCes'])]:
+  cn_names = {row['id']:row['name'] for row in reference}
+  for row in rows:
+   if row['id'] in cn_names:
+    row['aliases'] = list(dict.fromkeys([*row['aliases'],cn_names[row['id']]]))
+levels = {level:row['maxCost'] for level,row in get('levels').items()}
+d={'region':region,'masterCosts':levels,'retrieved':datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).date().isoformat(),'sources':sources,'servants':sorted(servants,key=lambda s:s['no']),'ces':ces,'catalogCes':sorted(catalog,key=lambda c:c['id'])}
+(ROOT/'dist'/('data.js' if region=='CN' else 'data-jp.js')).write_text('globalThis.FGO_DATA='+json.dumps(d,ensure_ascii=False,separators=(',',':'))+';',encoding='utf8')
 print('Catalog:',len(catalog));print(len(servants),'servants',len(ces),'CEs',[(c['id'],c['name']) for c in ces])

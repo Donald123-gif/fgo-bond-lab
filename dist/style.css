@@ -535,3 +535,7 @@ dialog #toast { position: absolute; }
   .picker-shell > .picker-grid { flex: 1 0 auto; overflow: visible; }
   .picker-bottom { position: sticky; bottom: 0; z-index: 2; }
 }
+
+#regionSelect { width: auto; min-height: 44px; padding: 4px 10px; color: var(--gold-light); border-color: var(--gold-dark); }
+#regionStatus { padding: 12px; text-align: center; color: var(--text-muted); }
+.data-line #regionLabel { display: inline; }
