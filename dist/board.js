@@ -44,7 +44,7 @@ function setTouchReorder(enabled) {
 reorderButton.onclick = () => setTouchReorder(!document.body.classList.contains('touch-reorder'));
 phoneLayout.addEventListener('change', () => setTouchReorder(false));
 let boardDrag=null,keyboardSource=null;
-function dragSource(target){const row=target.closest('[data-position]');if(!row||target.closest('[data-lock],input,select,details,[data-crown],[data-auto-reward],.extra-equipment,.bond-slot'))return null;const ce=target.closest('[data-pick="ce"],[data-pick="support"]');return {row,handle:ce||target.closest('.servant-slot,[data-drag]')||row,type:ce?'ce':'whole'}}
+function dragSource(target){const row=target.closest('[data-position]');if(!row||target.closest('[data-face],[data-lock],input,select,details,[data-crown],[data-auto-reward],.extra-equipment,.bond-slot'))return null;const ce=target.closest('[data-pick="ce"],[data-pick="support"]');return {row,handle:ce||target.closest('.servant-slot,[data-drag]')||row,type:ce?'ce':'whole'}}
 document.addEventListener('dragstart',e=>{if(e.target.closest('#partyGrid'))e.preventDefault()});
 document.addEventListener('pointerdown',e=>{dragClickUntil=0;
  if (e.pointerType === 'touch' && phoneLayout.matches && !document.body.classList.contains('touch-reorder') && !e.target.closest('[data-drag]')) return;

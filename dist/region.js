@@ -34,7 +34,10 @@
    link.href = FGO_DATA.sources[link.dataset.source];
    link.textContent = region + (link.dataset.source === 'servants' ? ' 从者数据' : ' 礼装数据');
   }
-  for (const file of ['app','picker','results']) await load(file + '.js?v=14');
+  const portraits = await fetch('portraits-' + region + '.json?v=15');
+  if (!portraits.ok) throw Error('portrait catalog unavailable');
+  globalThis.FGO_PORTRAITS = await portraits.json();
+  for (const file of ['app','picker','results']) await load(file + '.js?v=15');
   if (FGO_DATA.masterCosts) document.getElementById('level').max = Math.max(...Object.keys(FGO_DATA.masterCosts).map(Number));
   document.querySelector('main').inert = false;
   document.querySelector('.mobile-dock').inert = false;

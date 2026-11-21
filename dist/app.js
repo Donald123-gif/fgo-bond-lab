@@ -23,7 +23,9 @@ $('supportReward').innerHTML='<option value="0">不带牵绊加成礼装</option
 function fillGrand(){const old=$('grandId').value||state.inputs?.grandId||'0';$('grandId').innerHTML='<option value="0">请选择已戴冠从者</option>'+D.servants.filter(s=>state.owned.includes(s.id)).map(s=>`<option value="${s.id}">${esc(s.name)} · ${classNames[s.class]||s.class}</option>`).join('');$('grandId').value=old;}
 fillGrand();
 for(const [id,key] of Object.entries(state.forms)){const sv=getSvt(id);if(key!=='auto'&&!sv?.variants.some(v=>v.key===key||v.rawKeys?.includes(key)))state.forms[id]='auto';else if(key!=='auto')state.forms[id]=sv.variants.find(v=>v.key===key||v.rawKeys?.includes(key)).key}
-for(const id of ids){if(state.inputs?.[id]!==undefined){if($(id).type==='checkbox')$(id).checked=state.inputs[id];else $(id).value=state.inputs[id]}$(id).addEventListener('change',()=>{if(id==='level'){const l=+$(id).value;if(Number.isInteger(l)&&l>=1&&l<=+$('level').max)$('cost').value=D.masterCosts?.[l] ?? BondSolver.masterCost(l)}if(id==='support')state.supportCombatCe=0;changed()})}
+for(const id of ids){if(state.inputs?.[id]!==undefined){if($(id).type==='checkbox')$(id).checked=state.inputs[id];else $(id).value=state.inputs[id]}$(id).addEventListener('change',()=>{if(id==='level'){const l=+$(id).value;if(Number.isInteger(l)&&l>=1&&l<=+$('level').max)$('cost').value=D.masterCosts?.[l] ?? BondSolver.masterCost(l)}if(id==='support')state.supportCombatCe=0;
+ if (id === 'grandGroup' || id === 'customGroup') clearGroupParty();
+ changed()})}
 function inputs(){return Object.fromEntries(ids.map(id=>[id,$(id).type==='checkbox'?$(id).checked:$(id).value]))}
 function save(){try{localStorage.setItem(partyStorageKey,JSON.stringify({...state,inputs:inputs()}))}catch{notify('浏览器无法保存编队，请检查站点存储权限或空间。')}}
 function activeGroupSelect() {
@@ -31,6 +33,62 @@ function activeGroupSelect() {
  if (mode === 'duel') return $('grandGroup');
  if (mode === 'single' && $('customGroup').value !== 'any') return $('customGroup');
  return null;
+}
+function clearGroupParty() {
+ const defaults = initial();
+ state.manualSlots = defaults.manualSlots;
+ state.order = defaults.order;
+ state.supportServant = state.supportCombatCe = state.resolvedReward = 0;
+ state.supportCeLocked = state.supportServantLocked = false;
+ for (const id of ['support','supportReward','grandId']) $(id).value = '0';
+ $('grandReward').value = 'auto';
+ $('grandBond').value = 'none';
+ last = null;
+ $('status').textContent = '出击职阶组已更换，请重新编队。';
+}
+function portraitKey(servant, support) {
+ return (support ? 'support-' : '') + servant.id;
+}
+function portraitUrl(file) {
+ return new URL(file, 'https://static.atlasacademy.io/' + D.region + '/Faces/').href;
+}
+function faceFor(servant, support, fallback) {
+ const file = state.portraits?.[portraitKey(servant,support)];
+ return file ? portraitUrl(file) : fallback;
+}
+function faceButton(servant, support=false) {
+ return servant ? `<button type="button" class="face-button" data-face="${servant.id}" data-support="${support}">切换头像</button>` : '';
+}
+function openFaces(button) {
+ const servant = getSvt(button.dataset.face);
+ const support = button.dataset.support === 'true';
+ const key = portraitKey(servant,support);
+ const choices = [['跟随默认头像',''], ...(globalThis.FGO_PORTRAITS[servant.id] || [])];
+ const grid = $('faceChoices');
+ grid.replaceChildren();
+ for (const [label,file] of choices) {
+  const option = document.createElement('button');
+  option.type = 'button';
+  option.setAttribute('aria-pressed', String((state.portraits?.[key] || '') === file));
+  if (file) {
+   const image = new Image();
+   image.alt = '';
+   image.src = portraitUrl(file);
+   option.append(image);
+  }
+  option.append(label);
+  option.onclick = () => {
+   state.portraits ||= {};
+   if (file) state.portraits[key] = file; else delete state.portraits[key];
+   save();
+   $('faceDialog').close();
+   renderParty();
+   document.querySelector(`[data-face="${servant.id}"][data-support="${support}"]`)?.focus({preventScroll:true});
+  };
+  grid.append(option);
+ }
+ $('faceTitle').textContent = servant.name + ' · 切换头像';
+ $('faceDialog').showModal();
 }
 function updateGrand(){$('grandToggle').checked=$('grandMode').value!=='off';$('grandSettings').hidden=$('grandMode').value==='off';$('grandGroup').closest('label').hidden=$('grandMode').value!=='duel';$('customGroup').closest('label').hidden=$('grandMode').value!=='single';}
 $('grandToggle').onchange=()=>{if($('grandToggle').checked)$('grandMode').value=state.lastGrandMode||'duel';else{state.lastGrandMode=$('grandMode').value;$('grandMode').value='off'}changed()};
@@ -60,13 +118,13 @@ function renderParty(){
  let fixed=0;
  function normalCE(c,i,support=false){return `<div class="equipment-row"><span class="equipment-label">概念礼装</span><button class="ce-slot ${c?'filled':''}" data-pick="${support?'support':'ce'}" ${support?'':`data-slot="${i}"`} ${!support&&i>=n?'disabled':''} title="${esc(c?.name||'选择礼装')}" aria-label="${support?'助战':'第'+(i+1)+'位'}礼装：${esc(c?.name||'未装备')}">${c?ceSlotArt(c,support?0:c.cost,support?$('supportMlb').checked:undefined):'<span class="ce-plus">＋</span><small>选择礼装</small>'}</button></div>`}
  function extras(support=false){const key=support?'supportReward':'grandReward',c=getCE($(key).value==='auto'?state.resolvedReward:$(key).value);return `<div class="equipment-row extra-equipment"><span class="equipment-label">报酬礼装 <em>COST 0</em></span><button class="ce-slot ${c?'filled':''}" data-grand-pick="${key}" title="${esc(c?.name||'选择报酬礼装')}" aria-label="${support?'助战':'自有'}报酬礼装：${esc(c?.name||'自动或未装备')}">${c?ceSlotArt(c,0,support?$('supportRewardMlb').checked:undefined):`<span class="ce-plus">${$(key).value==='auto'?'✧':'＋'}</span><small>${$(key).value==='auto'?'自动选优':'选择礼装'}</small>`}</button>${support?'':'<button class="reward-auto" data-auto-reward>自动选优</button>'}</div><div class="equipment-row extra-equipment"><span class="equipment-label">牵绊礼装 <em>COST 0</em></span>${support?'<div class="bond-slot"><span>◇</span><small>助战自身十绊</small></div>':`<label class="bond-slot"><span>◇</span><select data-grand-bond aria-label="自身牵绊礼装效果">${[...$('grandBond').options].map(o=>`<option value="${o.value}" ${o.selected?'selected':''}>${{none:'未装备',np:'开局 NP50%',original:'原有效果'}[o.value]}</option>`).join('')}</select></label>`}</div>`}
- const cards=state.manualSlots.map((sl,i)=>{const s=getSvt(sl.servantId),c=getCE(sl.ceId),v=s?.variants.find(v=>v.key===(state.forms[s.id]&&state.forms[s.id]!=='auto'?state.forms[s.id]:sl.autoForm)),crown=on&&i===crownIndex;if(i<n)fixed+=(v?.cost??s?.cost??0)+(c?.cost||0);return `<article class="party-slot ${i>=n?'inactive':''} ${crown?'crowned':''}"><div class="slot-number">${String(i+1).padStart(2,'0')} <span>${crown?'♛ GRAND':i>=n?'不出击':s?(sl.autoServant?'AUTO':'固定'):'AUTO'}</span></div><button class="servant-slot ${s?'filled':''} rarity-${s?.rarity||0}" ${crown?'data-grand-pick="grandServant"':'data-pick="servant"'} data-slot="${i}" ${i>=n?'disabled':''} aria-label="${crown?'选择冠位从者':'选择从者 '+(i+1)}">${s?`<img src="${esc(v?.image||s.image)}" alt="${esc(s.name)}" loading="lazy"><span class="card-shade"></span><span class="card-class">${classIcon(s.class)}</span><span class="card-stars">${'★'.repeat(s.rarity)||'☆'}</span><span class="card-name">${esc(s.name)}</span><span class="slot-cost">COST ${v?.cost??s.cost}</span>`:`<span class="empty-sigil">${crown?'♛':'＋'}</span><strong>${crown?'选择冠位从者':'选择从者'}</strong><small>${crown?'已完成冠位选定':'留空 · 自动补全'}</small>`}</button>${s?`<select data-form="${s.id}" class="slot-form" aria-label="${esc(s.name)}形态"><option value="auto">最优灵基 · 自动</option>${s.variants.map(x=>`<option value="${x.key}" ${state.forms[s.id]===x.key?'selected':''}>${esc(x.label)}</option>`).join('')}</select>`:'<div class="slot-form placeholder">灵基形态随结果注明</div>'}${normalCE(c,i)}${crown?extras():on&&s&&i<n?`<button class="set-grand" data-crown="${s.id}">♛ 设为冠位</button>`:''}</article>`});
+ const cards=state.manualSlots.map((sl,i)=>{const s=getSvt(sl.servantId),c=getCE(sl.ceId),v=s?.variants.find(v=>v.key===(state.forms[s.id]&&state.forms[s.id]!=='auto'?state.forms[s.id]:sl.autoForm)),crown=on&&i===crownIndex;if(i<n)fixed+=(v?.cost??s?.cost??0)+(c?.cost||0);return `<article class="party-slot ${i>=n?'inactive':''} ${crown?'crowned':''}"><div class="slot-number">${String(i+1).padStart(2,'0')} <span>${crown?'♛ GRAND':i>=n?'不出击':s?(sl.autoServant?'AUTO':'固定'):'AUTO'}</span></div><button class="servant-slot ${s?'filled':''} rarity-${s?.rarity||0}" ${crown?'data-grand-pick="grandServant"':'data-pick="servant"'} data-slot="${i}" ${i>=n?'disabled':''} aria-label="${crown?'选择冠位从者':'选择从者 '+(i+1)}">${s?`<img src="${esc(faceFor(s,false,v?.image||s.image))}" alt="${esc(s.name)}" loading="lazy"><span class="card-shade"></span><span class="card-class">${classIcon(s.class)}</span><span class="card-stars">${'★'.repeat(s.rarity)||'☆'}</span><span class="card-name">${esc(s.name)}</span><span class="slot-cost">COST ${v?.cost??s.cost}</span>`:`<span class="empty-sigil">${crown?'♛':'＋'}</span><strong>${crown?'选择冠位从者':'选择从者'}</strong><small>${crown?'已完成冠位选定':'留空 · 自动补全'}</small>`}</button>${faceButton(s)}${s?`<select data-form="${s.id}" class="slot-form" aria-label="${esc(s.name)}形态"><option value="auto">最优灵基 · 自动</option>${s.variants.map(x=>`<option value="${x.key}" ${state.forms[s.id]===x.key?'selected':''}>${esc(x.label)}</option>`).join('')}</select>`:'<div class="slot-form placeholder">灵基形态随结果注明</div>'}${normalCE(c,i)}${crown?extras():on&&s&&i<n?`<button class="set-grand" data-crown="${s.id}">♛ 设为冠位</button>`:''}</article>`});
  const support=getSvt(state.supportServant),ce=getCE(state.supportCombatCe||+$('support').value),supportCrown=on&&$('supportGrand').checked;
- cards.push(`<article class="party-slot support-slot ${supportCrown?'crowned':''}"><div class="slot-number">SUPPORT <span>${supportCrown?'♛ GRAND':'助战'}</span></div><button class="servant-slot ${support?'filled':''}" data-pick="supportServant" aria-label="选择助战从者">${support?`<img src="${esc(support.image)}" alt="${esc(support.name)}"><span class="card-shade"></span><span class="card-class">${classIcon(support.class)}</span><span class="card-stars">${'★'.repeat(support.rarity)}</span><span class="card-name">${esc(support.name)}</span>`:'<span class="empty-sigil">✦</span><strong>选择助战</strong><small>按通关需求选择</small>'}</button><div class="slot-form placeholder">助战不占用 COST</div>${normalCE(ce,5,true)}${supportCrown?extras(true):''}</article>`);
+ cards.push(`<article class="party-slot support-slot ${supportCrown?'crowned':''}"><div class="slot-number">SUPPORT <span>${supportCrown?'♛ GRAND':'助战'}</span></div><button class="servant-slot ${support?'filled':''}" data-pick="supportServant" aria-label="选择助战从者"><span class="support-ribbon">＋助战</span>${support?`<img src="${esc(faceFor(support,true,support.image))}" alt="${esc(support.name)}"><span class="card-shade"></span><span class="card-class">${classIcon(support.class)}</span><span class="card-stars">${'★'.repeat(support.rarity)}</span><span class="card-name">${esc(support.name)}</span>`:'<span class="empty-sigil">✦</span><strong>选择助战</strong><small>按通关需求选择</small>'}</button>${faceButton(support,true)}<div class="slot-form placeholder">助战不占用 COST</div>${normalCE(ce,5,true)}${supportCrown?extras(true):''}</article>`);
  $('partyGrid').innerHTML=state.order.map(i=>cards[i]).join('');decorateBoard();
 }
 function renderPools(){$('servantCount').textContent=`${state.owned.length} 位候选`;$('ceCount').textContent=`${Object.values(state.ces).filter(c=>c.enabled).length} 种候选`;$('poolSummary').innerHTML=D.ces.filter(c=>state.ces[c.id]?.enabled).map(c=>`<span class="chip">${esc(c.name)}${state.ces[c.id].required?' · 必带':''}</span>`).join('');fillGrand();}
-$('partyGrid').onclick=e=>{if(Date.now()<dragClickUntil||e.target.closest('[data-drag],[data-lock]'))return;const crown=e.target.closest('[data-crown]');if(crown){$('grandId').value=crown.dataset.crown;changed();return}if(e.target.closest('[data-auto-reward]')){$('grandReward').value='auto';changed();return}const b=e.target.closest('[data-pick],[data-grand-pick]');if(!b)return;const target=b.dataset.grandPick||b.dataset.pick;openPicker(['servant','supportServant','grandServant'].includes(target)?'servant':'ce',{target,index:b.hasAttribute('data-slot')?+b.dataset.slot:undefined})};
+$('partyGrid').onclick=e=>{if(Date.now()<dragClickUntil||e.target.closest('[data-drag],[data-lock]'))return;const face=e.target.closest('[data-face]');if(face){openFaces(face);return}const crown=e.target.closest('[data-crown]');if(crown){$('grandId').value=crown.dataset.crown;changed();return}if(e.target.closest('[data-auto-reward]')){$('grandReward').value='auto';changed();return}const b=e.target.closest('[data-pick],[data-grand-pick]');if(!b)return;const target=b.dataset.grandPick||b.dataset.pick;openPicker(['servant','supportServant','grandServant'].includes(target)?'servant':'ce',{target,index:b.hasAttribute('data-slot')?+b.dataset.slot:undefined})};
 $('partyGrid').onchange=e=>{if(e.target.dataset.svtLevel){const input = e.target;
  const level = Math.max(1, Math.min(120, Math.trunc(+input.value) || 1));
  input.value = level;

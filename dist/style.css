@@ -542,3 +542,12 @@ dialog #toast { position: absolute; }
 
 .bond-state { display:block; margin:5px 2px; color:var(--text-muted); font-size:12px; }
 .bond-state select { width:100%; min-height:40px; padding:3px; font-size:12px; }
+
+.support-ribbon {position:absolute;z-index:2;left:0;bottom:24%;padding:3px 10px 3px 5px;background:linear-gradient(110deg,#0954a4,#138eac);color:white;font-weight:700;font-size:13px;clip-path:polygon(0 0,100% 0,90% 100%,0 100%);pointer-events:none}
+.face-button {width:100%;padding:4px;margin-bottom:5px;color:var(--gold-light);font-size:12px}
+#faceDialog {width:min(540px,96vw)}
+#faceChoices {display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:8px;padding:12px;max-height:65dvh;overflow:auto}
+#faceChoices button {display:grid;justify-items:center;align-content:center;gap:6px;padding:8px;font-size:12px}
+#faceChoices img {width:60px;height:60px;object-fit:cover}
+#faceChoices [aria-pressed=true] {border-color:var(--gold-light);background:#314767}
+@media(pointer:coarse){.face-button{min-height:44px}}

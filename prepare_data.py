@@ -16,7 +16,10 @@ def get(key):
   return json.load(response)
 aliases=json.loads((ROOT/'aliases.json').read_text(encoding='utf8'))
 servants=[]
-for s in get('servants'):
+from portraits import save_portraits
+servant_export = get('servants')
+save_portraits(servant_export,region,ROOT/'dist')
+for s in servant_export:
  if s['type'] not in ['normal','heroine'] or s['collectionNo']<=0:continue
  base=[t['id'] for t in s['traits']]; variants=[]
  faces=s['extraAssets'].get('faces',{}); add=s['ascensionAdd']
