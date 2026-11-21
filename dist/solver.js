@@ -17,8 +17,8 @@ function solve(data,o,progress=()=>{}){
  if(grand){
   const gs=data.servants.find(s=>s.id===grandId);
   if(!gs||!o.owned.includes(grandId))throw Error('请从候选池中选择已完成冠位选定的自有从者。');
-  const group = o.grandMode === 'duel' ? o.grandGroup : o.customGroup;
-  if(group && group !== 'any'){
+  const group = o.grandGroup;
+  {
    const classes=grandGroups[group];
    if(!classes||!classes.includes(gs.class))throw Error('自有冠位从者不符合当前戴冠战职阶限制。');
    if(o.locked.some(id=>!classes.includes(data.servants.find(s=>s.id===id)?.class)))throw Error('必选从者与戴冠战职阶限制冲突。');

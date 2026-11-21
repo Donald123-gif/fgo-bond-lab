@@ -5,7 +5,7 @@ const traits={300:'秩序',301:'混沌',302:'中立',303:'善',304:'恶',305:'�
 const effectNames={bond:'牵绊提升',initialNp:'初始 NP',attack:'攻击强化',npDamage:'宝具威力',critical:'暴击 / 星',event:'活动加成',reward:'其他报酬'};
 const icons={saber:'M16 3 20 8 17 22 22 25 20 28 15 24 9 30 6 27 12 21 8 16 11 14 14 19 14 6Z',archer:'M8 3Q30 17 8 31L13 17Z M4 17H29 M24 12L29 17 24 22',lancer:'M23 2 28 12 22 11 7 32 4 30 19 9 16 5Z',rider:'M6 28V19L12 8 23 5 28 14 19 16 18 24 25 29Z M12 8 12 3 17 6',caster:'M6 29 22 8 M16 5 22 1 28 5 28 11 22 15 16 11Z M3 26 9 32',assassin:'M8 9Q16 0 24 9L27 20 21 29 11 29 5 20Z M10 16 14 18 M22 16 18 18 M13 24H19',berserker:'M8 5 16 12 24 5 28 18 22 29 10 29 4 18Z M10 16 14 19 M22 16 18 19',shielder:'M5 5 16 2 27 5 26 20 16 32 6 20Z M16 5V26 M9 14H23'};
 function classIcon(c){return `<svg class="class-icon" viewBox="0 0 34 34" aria-label="${esc(classNames[c]||c)}"><path d="${icons[c]||'M17 2 21 12 32 17 21 22 17 32 12 22 2 17 12 12Z M17 10 24 17 17 24 10 17Z'}" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>`}
-const ids=['level','cost','base','count','front','support','supportMlb','objective','extra','tea','reserveSlots','reserveCost','costumes','grandMode','grandGroup','customGroup','grandId','grandReward','grandBond','supportGrand','supportReward','supportRewardMlb'];
+const ids=['level','cost','base','count','front','support','supportMlb','objective','extra','tea','reserveSlots','reserveCost','costumes','grandMode','grandGroup','grandId','grandReward','grandBond','supportGrand','supportReward','supportRewardMlb'];
 const partyStorageKey = D.region === 'CN' ? 'chaldea-bond-v1' : 'chaldea-bond-v1-' + D.region;
 const pickerStorageKey = D.region === 'CN' ? 'fgo-picker-preferences' : 'fgo-picker-preferences-' + D.region;
 const initial=()=>({owned:D.servants.filter(s=>!s.mash).map(s=>s.id),locked:[],maxed:[],forms:{},ceLevels:{},order:[0,1,5,2,3,4],svtLevels:{},manualSlots:Array.from({length:5},()=>({servantId:0,ceId:0})),supportServant:0,supportCombatCe:0,ces:Object.fromEntries(D.ces.map(c=>[c.id,{enabled:[1949,2020,2052,2124,2142,2209,2233,2437,330,910,99].includes(c.id),mlb:true,required:false}]))});
@@ -23,15 +23,21 @@ $('supportReward').innerHTML='<option value="0">不带牵绊加成礼装</option
 function fillGrand(){const old=$('grandId').value||state.inputs?.grandId||'0';$('grandId').innerHTML='<option value="0">请选择已戴冠从者</option>'+D.servants.filter(s=>state.owned.includes(s.id)).map(s=>`<option value="${s.id}">${esc(s.name)} · ${classNames[s.class]||s.class}</option>`).join('');$('grandId').value=old;}
 fillGrand();
 for(const [id,key] of Object.entries(state.forms)){const sv=getSvt(id);if(key!=='auto'&&!sv?.variants.some(v=>v.key===key||v.rawKeys?.includes(key)))state.forms[id]='auto';else if(key!=='auto')state.forms[id]=sv.variants.find(v=>v.key===key||v.rawKeys?.includes(key)).key}
+if (state.inputs?.grandMode === 'single') {
+ const previousGroup = state.inputs.customGroup;
+ state.inputs.grandMode = Object.hasOwn(BondSolver.grandGroups, previousGroup) ? 'duel' : 'off';
+ if (state.inputs.grandMode === 'duel') state.inputs.grandGroup = previousGroup;
+}
+if (state.inputs) delete state.inputs.customGroup;
+delete state.lastGrandMode;
 for(const id of ids){if(state.inputs?.[id]!==undefined){if($(id).type==='checkbox')$(id).checked=state.inputs[id];else $(id).value=state.inputs[id]}$(id).addEventListener('change',()=>{if(id==='level'){const l=+$(id).value;if(Number.isInteger(l)&&l>=1&&l<=+$('level').max)$('cost').value=D.masterCosts?.[l] ?? BondSolver.masterCost(l)}if(id==='support')state.supportCombatCe=0;
- if (id === 'grandGroup' || id === 'customGroup') clearGroupParty();
+ if (id === 'grandGroup') clearGroupParty();
  changed()})}
 function inputs(){return Object.fromEntries(ids.map(id=>[id,$(id).type==='checkbox'?$(id).checked:$(id).value]))}
 function save(){try{localStorage.setItem(partyStorageKey,JSON.stringify({...state,inputs:inputs()}))}catch{notify('浏览器无法保存编队，请检查站点存储权限或空间。')}}
 function activeGroupSelect() {
  const mode = $('grandMode').value;
  if (mode === 'duel') return $('grandGroup');
- if (mode === 'single' && $('customGroup').value !== 'any') return $('customGroup');
  return null;
 }
 function clearGroupParty() {
@@ -90,8 +96,8 @@ function openFaces(button) {
  $('faceTitle').textContent = servant.name + ' · 切换头像';
  $('faceDialog').showModal();
 }
-function updateGrand(){$('grandToggle').checked=$('grandMode').value!=='off';$('grandSettings').hidden=$('grandMode').value==='off';$('grandGroup').closest('label').hidden=$('grandMode').value!=='duel';$('customGroup').closest('label').hidden=$('grandMode').value!=='single';}
-$('grandToggle').onchange=()=>{if($('grandToggle').checked)$('grandMode').value=state.lastGrandMode||'duel';else{state.lastGrandMode=$('grandMode').value;$('grandMode').value='off'}changed()};
+function updateGrand(){$('grandToggle').checked=$('grandMode').value!=='off';$('grandSettings').hidden=$('grandMode').value==='off';}
+$('grandToggle').onchange=()=>{$('grandMode').value=$('grandToggle').checked?'duel':'off';changed()};
 function changed(){state.locked=[...new Set(state.manualSlots.filter(s=>s.servantLocked||!s.autoServant).map(s=>s.servantId).filter(Boolean))];updateGrand();save();dirty=true;if(worker){worker.terminate();worker=null;$('calculate').disabled=false;$('cancel').hidden=true;$('status').textContent='条件已变更，请重新计算。'}$('resultBadge').textContent='当前编队 · 可重新优化';renderParty();renderPools();}
 function notify(msg){(document.querySelector('dialog[open]:last-of-type')||document.querySelector('dialog[open]')||document.body).append($('toast'));$('toast').textContent=msg;$('toast').hidden=false;clearTimeout(notify.timer);notify.timer=setTimeout(()=>$('toast').hidden=true,3500)}
 function tags(s,v){const chosen=s.variants.find(v=>v.key===state.forms[s.id]);return (v||chosen?.traits||s.traits).filter(t=>traits[t]).map(t=>`<span class="tag ${t===2821?'special':''}">${traits[t]}</span>`).join('')}
@@ -136,7 +142,7 @@ $('clearParty').onclick=()=>{state.manualSlots=initial().manualSlots;$('grandId'
 function request(){let o={...inputs(),...state,ces:structuredClone(state.ces),manualSlots:state.manualSlots.map(sl=>({...sl,servantId:sl.autoServant&&!sl.servantLocked?0:sl.servantId,ceId:sl.autoCE&&!sl.ceLocked?0:sl.ceId}))};for(const id of ['level','cost','base','count','front','support','extra','tea','reserveSlots','reserveCost','grandId','supportReward'])o[id]=+$(id).value;for(const id of ids){const el=$(id);if(el.type==='number'&&!el.checkValidity())throw Error('请检查输入范围：'+el.parentElement.textContent.trim())}o.front=state.order.slice(0,3).filter(i=>i<o.count).length;if(o.front>o.count)throw Error('自有前排人数不能超过自有从者人数。');if(o.manualSlots.slice(o.count).some(s=>s.servantId||s.ceId))throw Error('未出击的卡位仍有固定配置，请清空对应槽位或增加自有从者人数。');
  o.locked=state.manualSlots.filter(s=>s.servantLocked||!s.autoServant).map(s=>s.servantId).filter(Boolean);if(new Set(o.locked).size!==o.locked.length)throw Error('自有从者不能重复入队。');o.order=[...state.order];o.lockedFront=Object.fromEntries(state.manualSlots.map((sl,i)=>[sl,i]).filter(([sl])=>sl.servantLocked&&sl.servantId).map(([sl,i])=>[sl.servantId,state.order.indexOf(i)<3]));o.fixedNormalCes=[];o.manualCombatSlots=[];const seen=new Set();for(const [index,sl] of o.manualSlots.entries()){if(!sl.ceId)continue;const c=getCE(sl.ceId);if(seen.has(c.id))throw Error('每种自有礼装按一张建模，不能重复装备。');seen.add(c.id);if(getBond(c.id)){o.ces[c.id].enabled=true;o.ces[c.id].required=true;o.fixedNormalCes.push(c.id)}else{o.reserveSlots++;o.reserveCost+=c.cost;o.manualCombatSlots.push({index,servantId:sl.servantId,ceId:c.id})}}
  if(o.reserveSlots>o.count)throw Error('已选战斗礼装与额外预留槽位超过自有从者人数。');if(activeGroupSelect()&&state.supportServant&&!BondSolver.grandGroups[activeGroupSelect().value].includes(getSvt(state.supportServant).class))throw Error('所选助战从者不符合当前戴冠战职阶限制。');return o;}
-$('calculate').onclick=()=>{try{const o=request();worker?.terminate();worker=new Worker('worker.js?v=14&region=' + D.region);$('calculate').disabled=true;$('cancel').hidden=false;$('status').textContent='正在搜索符合限制的队伍…';worker.onmessage=({data})=>{if(data.progress){$('status').textContent=`已搜索 ${data.progress.toLocaleString()} 种礼装组合…`;return}$('calculate').disabled=false;$('cancel').hidden=true;worker.terminate();worker=null;if(data.error){showError(data.error);return}last={result:data.result,options:o};dirty=false;renderResult();
+$('calculate').onclick=()=>{try{const o=request();worker?.terminate();worker=new Worker('worker.js?v=16&region=' + D.region);$('calculate').disabled=true;$('cancel').hidden=false;$('status').textContent='正在搜索符合限制的队伍…';worker.onmessage=({data})=>{if(data.progress){$('status').textContent=`已搜索 ${data.progress.toLocaleString()} 种礼装组合…`;return}$('calculate').disabled=false;$('cancel').hidden=true;worker.terminate();worker=null;if(data.error){showError(data.error);return}last={result:data.result,options:o};dirty=false;renderResult();
  if (phoneLayout.matches) document.querySelector('.board-summary').scrollIntoView({block:'center'});
  $('status').textContent=`完成：已搜索 ${data.result.checked.toLocaleString()} 种礼装组合。`;save()};worker.onerror=()=>{showError('计算线程启动失败，请刷新后重试。');$('calculate').disabled=false;$('cancel').hidden=true;worker?.terminate();worker=null};worker.postMessage(o)}catch(e){showError(e.message)}};
 function showError(msg){$('status').textContent=msg;$('resultBadge').textContent='需要调整条件';notify(msg)}
