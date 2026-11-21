@@ -13,14 +13,15 @@ function updateBoardTotals(){
  const ces=state.manualSlots.filter((s,i)=>i<+$('count').value).map(sl=>getBond(sl.ceId)).filter(Boolean);if(reward)ces.push(reward);
  const effects=ces.map(c=>({...c,e:BondSolver.effect(c,state.ces[c.id]?.mlb??true)}));const support=[];
  for(const [id,mlb] of [[+$('support').value,$('supportMlb').checked],[on&&$('supportGrand').checked?+$('supportReward').value:0,$('supportRewardMlb').checked]]){const c=getBond(id);if(c)support.push({...c,e:BondSolver.effect(c,mlb)})}
- const o={base:+$('base').value,extra:+$('extra').value,tea:+$('tea').value};let cost=+$('reserveCost').value,total=0,number=0,rates=[];
+ const guides = state.manualSlots.slice(0, +$('count').value).filter(slot => state.bond15.includes(slot.servantId)).length;
+ const o={guides,base:+$('base').value,extra:+$('extra').value,tea:+$('tea').value};let cost=+$('reserveCost').value,total=0,number=0,rates=[];
  for(const [idx,sl] of state.manualSlots.entries()){const el=$('partyGrid').querySelector(`[data-member="${idx}"]`),s=getSvt(sl.servantId);if(idx>=+$('count').value)continue;cost+=getCE(sl.ceId)?.cost||0;if(!s)continue;number++;const v=s.variants.find(v=>v.key===(state.forms[s.id]&&state.forms[s.id]!=='auto'?state.forms[s.id]:sl.autoForm))||s.variants[0];cost+=v.cost;
  const g=BondSolver.gain({...s,maxed:state.maxed.includes(s.id)},v,effects,support,o,state.order.indexOf(idx)<3);total+=g.value;rates.push(g.rate);
  el.insertAdjacentHTML('beforeend',`<div class="slot-bond"><b>${g.value.toLocaleString()}</b><small>牵绊 · +${g.rate}%${g.flat?' / +'+g.flat:''}</small></div><div class="board-form">${esc(v.label)}</div>`);
  if(typeof formDetails==='function')el.insertAdjacentHTML('beforeend',formDetails(s,v,{...inputs(),ces:state.ces},{ces:ces.filter(c=>c!==reward).map(c=>c.id),grandReward:reward?.id||0}));
  }
  $('fixedCost').textContent=`COST ${cost} / ${$('cost').value}`;$('fixedCost').classList.toggle('over-cost',cost>+$('cost').value);
- $('resultBody').innerHTML=`<div><small>队伍 COST</small><b class="${cost>+$('cost').value?'over-cost':''}">${cost}<em> / ${$('cost').value}</em></b></div><div><small>${number<+$('count').value?'已选成员':'全队'}牵绊 / 次</small><b>${total.toLocaleString()}</b></div><div><small>成员百分比加成</small><b>${rates.length?Math.min(...rates)+'–'+Math.max(...rates):0}%</b></div><div><small>编队</small><b>${number} + 1<em> 助战</em></b></div>`;
+ $('resultBody').innerHTML=`<div><small>队伍 COST</small><b class="${cost>+$('cost').value?'over-cost':''}">${cost}<em> / ${$('cost').value}</em></b></div><div><small>${number<+$('count').value?'已选成员':'全队'}牵绊 / 次</small><b>${total.toLocaleString()}</b></div><div><small>成员百分比加成${guides?'（含绊15 +'+guides*BondSolver.GUIDANCE_RATE+'%）':''}</small><b>${rates.length?Math.min(...rates)+'–'+Math.max(...rates):0}%</b></div><div><small>编队</small><b>${number} + 1<em> 助战</em></b></div>`;
 }
 function swapBoard(a,b){if(a===b)return;[state.order[a],state.order[b]]=[state.order[b],state.order[a]];changed();$('status').textContent=`已交换 ${a+1} 与 ${b+1} 号整槽，从者与礼装同步移动。`;}
 function ceAt(idx){if(idx===5)return {id:state.supportCombatCe||+$('support').value,mlb:$('supportMlb').checked,locked:!!state.supportCeLocked};const sl=state.manualSlots[idx];return {id:sl.ceId,mlb:state.ces[sl.ceId]?.mlb??state.ceMlb?.[sl.ceId]??false,locked:!!sl.ceLocked}}

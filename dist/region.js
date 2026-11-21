@@ -34,7 +34,7 @@
    link.href = FGO_DATA.sources[link.dataset.source];
    link.textContent = region + (link.dataset.source === 'servants' ? ' 从者数据' : ' 礼装数据');
   }
-  for (const file of ['app','picker','results']) await load(file + '.js?v=12');
+  for (const file of ['app','picker','results']) await load(file + '.js?v=13');
   if (FGO_DATA.masterCosts) document.getElementById('level').max = Math.max(...Object.keys(FGO_DATA.masterCosts).map(Number));
   document.querySelector('main').inert = false;
   document.querySelector('.mobile-dock').inert = false;

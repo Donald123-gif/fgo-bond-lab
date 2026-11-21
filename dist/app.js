@@ -11,6 +11,8 @@ const pickerStorageKey = D.region === 'CN' ? 'fgo-picker-preferences' : 'fgo-pic
 const initial=()=>({owned:D.servants.filter(s=>!s.mash).map(s=>s.id),locked:[],maxed:[],forms:{},ceLevels:{},order:[0,1,5,2,3,4],svtLevels:{},manualSlots:Array.from({length:5},()=>({servantId:0,ceId:0})),supportServant:0,supportCombatCe:0,ces:Object.fromEntries(D.ces.map(c=>[c.id,{enabled:[1949,2020,2052,2124,2142,2209,2233,2437,330,910,99].includes(c.id),mlb:true,required:false}]))});
 let state=initial(),worker=null,last=null,dirty=false;
 try{const saved=JSON.parse(localStorage.getItem(partyStorageKey));if(saved){state={...state,...saved};state.owned=state.owned.filter(id=>D.servants.some(s=>s.id===id));state.locked=state.locked.filter(id=>state.owned.includes(id));state.ces={...initial().ces,...state.ces};if(!saved.manualSlots)state.manualSlots=Array.from({length:5},(_,i)=>({servantId:state.locked[i]||0,ceId:0}));}}catch{}
+// Older saves only had a generic cap flag. Keep that choice without inferring an unlock.
+if (!Array.isArray(state.bond15)) state.bond15 = [];
 if(!Array.isArray(state.order)||state.order.length!==6||new Set(state.order).size!==6||state.order.some(x=>!Number.isInteger(x)||x<0||x>5))state.order=[0,1,5,2,3,4];
 const getCE=id=>D.catalogCes.find(c=>c.id===+id),getSvt=id=>D.servants.find(s=>s.id===+id),getBond=id=>D.ces.find(c=>c.id===+id);
 for(const sl of state.manualSlots){if(!getSvt(sl.servantId))sl.servantId=0;if(!getCE(sl.ceId))sl.ceId=0}
@@ -23,7 +25,7 @@ fillGrand();
 for(const [id,key] of Object.entries(state.forms)){const sv=getSvt(id);if(key!=='auto'&&!sv?.variants.some(v=>v.key===key||v.rawKeys?.includes(key)))state.forms[id]='auto';else if(key!=='auto')state.forms[id]=sv.variants.find(v=>v.key===key||v.rawKeys?.includes(key)).key}
 for(const id of ids){if(state.inputs?.[id]!==undefined){if($(id).type==='checkbox')$(id).checked=state.inputs[id];else $(id).value=state.inputs[id]}$(id).addEventListener('change',()=>{if(id==='level'){const l=+$(id).value;if(Number.isInteger(l)&&l>=1&&l<=+$('level').max)$('cost').value=D.masterCosts?.[l] ?? BondSolver.masterCost(l)}if(id==='support')state.supportCombatCe=0;changed()})}
 function inputs(){return Object.fromEntries(ids.map(id=>[id,$(id).type==='checkbox'?$(id).checked:$(id).value]))}
-function save(){try{localStorage.setItem(partyStorageKey,JSON.stringify({...state,inputs:inputs()}))}catch{}}
+function save(){try{localStorage.setItem(partyStorageKey,JSON.stringify({...state,inputs:inputs()}))}catch{notify('浏览器无法保存编队，请检查站点存储权限或空间。')}}
 function updateGrand(){$('grandToggle').checked=$('grandMode').value!=='off';$('grandSettings').hidden=$('grandMode').value==='off';$('grandGroup').disabled=$('grandMode').value!=='duel';}
 $('grandToggle').onchange=()=>{if($('grandToggle').checked)$('grandMode').value=state.lastGrandMode||'duel';else{state.lastGrandMode=$('grandMode').value;$('grandMode').value='off'}changed()};
 function changed(){state.locked=[...new Set(state.manualSlots.filter(s=>s.servantLocked||!s.autoServant).map(s=>s.servantId).filter(Boolean))];updateGrand();save();dirty=true;if(worker){worker.terminate();worker=null;$('calculate').disabled=false;$('cancel').hidden=true;$('status').textContent='条件已变更，请重新计算。'}$('resultBadge').textContent='当前编队 · 可重新优化';renderParty();renderPools();}
@@ -70,12 +72,12 @@ $('clearParty').onclick=()=>{state.manualSlots=initial().manualSlots;$('grandId'
 function request(){let o={...inputs(),...state,ces:structuredClone(state.ces),manualSlots:state.manualSlots.map(sl=>({...sl,servantId:sl.autoServant&&!sl.servantLocked?0:sl.servantId,ceId:sl.autoCE&&!sl.ceLocked?0:sl.ceId}))};for(const id of ['level','cost','base','count','front','support','extra','tea','reserveSlots','reserveCost','grandId','supportReward'])o[id]=+$(id).value;for(const id of ids){const el=$(id);if(el.type==='number'&&!el.checkValidity())throw Error('请检查输入范围：'+el.parentElement.textContent.trim())}o.front=state.order.slice(0,3).filter(i=>i<o.count).length;if(o.front>o.count)throw Error('自有前排人数不能超过自有从者人数。');if(o.manualSlots.slice(o.count).some(s=>s.servantId||s.ceId))throw Error('未出击的卡位仍有固定配置，请清空对应槽位或增加自有从者人数。');
  o.locked=state.manualSlots.filter(s=>s.servantLocked||!s.autoServant).map(s=>s.servantId).filter(Boolean);if(new Set(o.locked).size!==o.locked.length)throw Error('自有从者不能重复入队。');o.order=[...state.order];o.lockedFront=Object.fromEntries(state.manualSlots.map((sl,i)=>[sl,i]).filter(([sl])=>sl.servantLocked&&sl.servantId).map(([sl,i])=>[sl.servantId,state.order.indexOf(i)<3]));o.fixedNormalCes=[];o.manualCombatSlots=[];const seen=new Set();for(const [index,sl] of o.manualSlots.entries()){if(!sl.ceId)continue;const c=getCE(sl.ceId);if(seen.has(c.id))throw Error('每种自有礼装按一张建模，不能重复装备。');seen.add(c.id);if(getBond(c.id)){o.ces[c.id].enabled=true;o.ces[c.id].required=true;o.fixedNormalCes.push(c.id)}else{o.reserveSlots++;o.reserveCost+=c.cost;o.manualCombatSlots.push({index,servantId:sl.servantId,ceId:c.id})}}
  if(o.reserveSlots>o.count)throw Error('已选战斗礼装与额外预留槽位超过自有从者人数。');if(Object.values(o.ces).filter(x=>x.enabled).length>12)throw Error('候选牵绊礼装最多12种（含固定槽位），请在候选配置中减少一种。');if(o.grandMode==='duel'&&state.supportServant&&!BondSolver.grandGroups[o.grandGroup].includes(getSvt(state.supportServant).class))throw Error('所选助战从者不符合当前戴冠战职阶限制。');return o;}
-$('calculate').onclick=()=>{try{const o=request();worker?.terminate();worker=new Worker('worker.js?v=11&region=' + D.region);$('calculate').disabled=true;$('cancel').hidden=false;$('status').textContent='正在搜索符合限制的队伍…';worker.onmessage=({data})=>{if(data.progress){$('status').textContent=`已搜索 ${data.progress.toLocaleString()} 种礼装组合…`;return}$('calculate').disabled=false;$('cancel').hidden=true;worker.terminate();worker=null;if(data.error){showError(data.error);return}last={result:data.result,options:o};dirty=false;renderResult();
+$('calculate').onclick=()=>{try{const o=request();worker?.terminate();worker=new Worker('worker.js?v=13&region=' + D.region);$('calculate').disabled=true;$('cancel').hidden=false;$('status').textContent='正在搜索符合限制的队伍…';worker.onmessage=({data})=>{if(data.progress){$('status').textContent=`已搜索 ${data.progress.toLocaleString()} 种礼装组合…`;return}$('calculate').disabled=false;$('cancel').hidden=true;worker.terminate();worker=null;if(data.error){showError(data.error);return}last={result:data.result,options:o};dirty=false;renderResult();
  if (phoneLayout.matches) document.querySelector('.board-summary').scrollIntoView({block:'center'});
  $('status').textContent=`完成：已搜索 ${data.result.checked.toLocaleString()} 种礼装组合。`;save()};worker.onerror=()=>{showError('计算线程启动失败，请刷新后重试。');$('calculate').disabled=false;$('cancel').hidden=true;worker?.terminate();worker=null};worker.postMessage(o)}catch(e){showError(e.message)}};
 function showError(msg){$('status').textContent=msg;$('resultBadge').textContent='需要调整条件';notify(msg)}
 $('cancel').onclick=()=>{worker?.terminate();worker=null;$('calculate').disabled=false;$('cancel').hidden=true;$('status').textContent='计算已停止。'};
-$('reset').onclick=()=>{localStorage.removeItem(partyStorageKey);location.reload()};
+$('reset').onclick=()=>{localStorage.removeItem(partyStorageKey);localStorage.removeItem(pickerStorageKey);location.reload()};
 $('counts').textContent=`${D.servants.length} 位从者 · ${D.catalogCes.length.toLocaleString()} 张礼装`;$('dataDate').textContent=D.retrieved.replaceAll('-','.');renderParty();renderPools();updateGrand();
 
 function ceSlotArt(c,cost,mlb){mlb=mlb??state.ces[c.id]?.mlb??state.ceMlb?.[c.id]??false;return `<span class="ce-compact"><img src="${esc(c.image)}" alt=""><span class="ce-numbers"><small>Lv.${state.ceLevels[c.id]||1} · COST ${cost}</small><small class="${mlb?'mlb':'unbroken'}">${mlb?'◆ ◆ ◆ ◆ 满破':'◇ ◇ ◇ ◇ 未满破'}</small></span></span>`}
@@ -99,3 +101,12 @@ for (const button of document.querySelectorAll('[data-jump-slot]')) {
   panel.scrollLeft += offset;
  };
 }
+
+const advancedSettings = document.querySelector('.settings > details');
+advancedSettings.open = Boolean(state.advancedOpen);
+advancedSettings.addEventListener('toggle', () => {
+ if (state.advancedOpen !== advancedSettings.open) {
+  state.advancedOpen = advancedSettings.open;
+  save();
+ }
+});

@@ -3,7 +3,7 @@ assert.equal(masterCost(1),56);assert.equal(masterCost(90),100);assert.equal(mas
 assert.equal(matches([300],{clauses:[[300,303]]}),false);assert.equal(matches([300,303],{clauses:[[300,303]]}),true);assert.equal(matches([304],{clauses:[[203],[304]]}),true);
 let ce={id:1,name:'兽科',cost:3,effects:[{mlb:true,rate:20,flat:0,supportRate:20,clauses:[[2821]]}]};
 let o={count:3,front:2,cost:22,reserveSlots:0,reserveCost:0,base:915,tea:1,extra:0,support:0,supportMlb:true,objective:'team',forms:{},costumes:false,maxed:[],locked:[],owned:[],ces:{1:{enabled:true,mlb:true,required:false}}};
-function brute(data,o){let best=-1;const ces=[[],[data.ces[0]]];for(const cs of ces){if(o.ces[1].required&&!cs.length)continue;const cost=cs.reduce((a,c)=>a+c.cost,0)+o.reserveCost;for(let mask=0;mask<1<<data.servants.length;mask++){let ss=data.servants.filter((s,i)=>mask&(1<<i));if(ss.length!==o.count||o.locked.some(id=>!ss.some(s=>s.id===id)))continue;for(let f=0;f<1<<ss.length;f++){if(f.toString(2).replace(/0/g,'').length!==o.front)continue;let c=cost,total=0;for(let i=0;i<ss.length;i++){let s=ss[i];c+=s.cost;total+=gain({...s,maxed:o.maxed.includes(s.id)},s.variants[0],cs.map(c=>({...c,e:c.effects[0]})),null,o,!!(f&(1<<i))).value}if(c<=o.cost)best=Math.max(best,total)}}}return best}
+function brute(data,o){let best=-1;const ces=[[],[data.ces[0]]];for(const cs of ces){if(o.ces[1].required&&!cs.length)continue;const cost=cs.reduce((a,c)=>a+c.cost,0)+o.reserveCost;for(let mask=0;mask<1<<data.servants.length;mask++){let ss=data.servants.filter((s,i)=>mask&(1<<i));if(ss.length!==o.count||o.locked.some(id=>!ss.some(s=>s.id===id)))continue;for(let f=0;f<1<<ss.length;f++){if(f.toString(2).replace(/0/g,'').length!==o.front)continue;let c=cost,total=0;for(let i=0;i<ss.length;i++){let s=ss[i];c+=s.cost;total+=gain({...s,maxed:o.maxed.includes(s.id)},s.variants[0],cs.map(c=>({...c,e:c.effects[0]})),null,{...o,guides:ss.filter(member=>o.bond15?.includes(member.id)).length},!!(f&(1<<i))).value}if(c<=o.cost)best=Math.max(best,total)}}}return best}
 for(let seed=0;seed<40;seed++){let servants=Array.from({length:7},(_,i)=>({id:i+1,no:i+1,cost:2+(i*7+seed*3)%11,traits:(i+seed)%3?[2821]:[],variants:[]}));for(const s of servants)s.variants=[{key:'base',traits:s.traits,cost:s.cost}];const data={servants,ces:[ce]};o={...o,cost:14+seed%18,front:seed%4,owned:servants.map(s=>s.id),locked:seed%2?[1]:[],maxed:seed%3?[3]:[]};let b=brute(data,o),r;try{r=solve(data,o)}catch(e){assert.equal(b,-1);continue}assert.equal(r.total,b,`seed ${seed}`);assert.equal(new Set(r.team.map(s=>s.id)).size,3);assert.ok(r.cost<=o.cost)}
 let d=FGO_DATA,opts={...o,count:5,front:2,cost:115,locked:[],maxed:[],owned:d.servants.filter(s=>!s.mash).map(s=>s.id),ces:Object.fromEntries(d.ces.map(c=>[c.id,{enabled:[1949,2020,2052,2124,2142,2209,2233,2437,330,910,99].includes(c.id),mlb:true,required:false}]))};
 console.time('full CN search');let r=solve(d,opts);console.timeEnd('full CN search');assert.equal(r.team.length,5);assert.ok(r.cost<=115);console.log('CN result',r.total,r.cost,r.checked,r.team.map(s=>d.servants.find(x=>x.id===s.id).name));
@@ -80,3 +80,24 @@ assert.ok(matches([301, 2858], jpEffect));
 assert.equal(matches([301], jpEffect), false);
 assert.equal(jpCatalog.masterCosts[200], 118);
 console.log('Regional snapshots, JP search alias, conditional CE and Master Cost passed.');
+
+// Compare exhaustive teams with variable numbers of capped and still-earning guides.
+for (let seed=0; seed<40; seed++) {
+ const servants = Array.from({length:8}, (_,i)=>make(i+1,1+(i+seed)%4,(i+seed)%3?[2821]:[]));
+ const data = {servants,ces:[ce]};
+ const opt = {...cfg, base:997, tea:2, count:4, front:seed%4, cost:8+seed%7,
+  owned:servants.map(s=>s.id), locked:seed%2?[2]:[], forms:{}, extra:3,
+  maxed:[2,4], bond15:[2,3,7], ces:{1:{enabled:true,mlb:true,required:false}}};
+ assert.equal(solve(data,opt).total,brute(data,opt),'guide brute seed '+seed);
+}
+const guideTest = {servants:[1,2,3,4].map(id=>make(id,1,[])),ces:[]};
+const guideOpts = {...cfg,owned:[1,2,3,4],locked:[1],objective:'target',cost:3,
+ count:3,front:1,base:1000,tea:1,extra:0,support:0,ces:{},maxed:[2,3],bond15:[2,3]};
+const guided = solve(guideTest,guideOpts);
+assert.equal(guided.guides,2);
+assert.equal(guided.team.find(s=>s.id===1).value,1800);
+assert.equal(guided.total,1800);
+assert.equal(solve(guideTest,{...guideOpts,objective:'team'}).guides,1);
+assert.equal(solve(guideTest,{...guideOpts,count:1,owned:[1],bond15:[2,3]}).total,1200);
+assert.equal(solve(guideTest,{...guideOpts,count:1,owned:[1],maxed:[],bond15:[1]}).total,1500);
+console.log('Bond 15 passive: stacking, target priority, self gain, benched guides, and 40 exhaustive comparisons passed.');

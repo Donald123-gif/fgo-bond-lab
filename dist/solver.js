@@ -4,7 +4,11 @@
 function effect(ce,mlb=true){return ce.effects.find(e=>e.mlb===mlb)||ce.effects[0]}
 function matches(traits,e){return !e.clauses.length||e.clauses.some(row=>row.every(t=>traits.includes(t)))}
 function masterCost(l){if(l<=90)return 56+Math.floor((l-1)/2);if(l<=109)return 100+Math.floor((l-89)/3);if(l<=126)return 106+Math.floor((l-107)/4);if(l<140)return 111;return 112+Math.floor((l-140)/10)}
-function gain(s,variant,ces,support,o,front){let rate=+o.extra||0,flat=0,sources=[];for(const c of ces){if(matches(variant.traits,c.e)){rate+=c.e.rate;flat+=c.e.flat;if(c.e.rate||c.e.flat)sources.push({name:c.name,rate:c.e.rate,flat:c.e.flat})}}for(const sup of (Array.isArray(support)?support:(support?[support]:[]))){if(matches(variant.traits,sup.e)){rate+=sup.e.supportRate;flat+=sup.e.flat;sources.push({name:sup.sourceLabel||'助战 · '+sup.name,rate:sup.e.supportRate,flat:sup.e.flat})}}let raw=o.base+Math.floor(o.base*rate/100+1e-8)+flat;let value=Math.floor(raw*(front?1.2:1)+1e-8)*o.tea;if(s.maxed)value=0;return {value,rate,flat,sources,front,variant:variant.key,cost:variant.cost,id:s.id}}
+const GUIDANCE_RATE = 25;
+function gain(s,variant,ces,support,o,front){const guidanceRate = (o.guides || 0) * GUIDANCE_RATE;
+ let rate=(+o.extra||0)+guidanceRate,flat=0,sources=[];
+ if (guidanceRate) sources.push({name:'绊15 · 梦火指引',rate:guidanceRate,flat:0});
+ for(const c of ces){if(matches(variant.traits,c.e)){rate+=c.e.rate;flat+=c.e.flat;if(c.e.rate||c.e.flat)sources.push({name:c.name,rate:c.e.rate,flat:c.e.flat})}}for(const sup of (Array.isArray(support)?support:(support?[support]:[]))){if(matches(variant.traits,sup.e)){rate+=sup.e.supportRate;flat+=sup.e.flat;sources.push({name:sup.sourceLabel||'助战 · '+sup.name,rate:sup.e.supportRate,flat:sup.e.flat})}}let raw=o.base+Math.floor(o.base*rate/100+1e-8)+flat;let value=Math.floor(raw*(front?1.2:1)+1e-8)*o.tea;if(s.maxed)value=0;return {value,rate,flat,sources,front,variant:variant.key,cost:variant.cost,id:s.id}}
 const grandGroups={saber:['saber'],archer:['archer'],lancer:['lancer'],rider:['rider'],caster:['caster'],assassin:['assassin'],berserker:['berserker'],extra1:['ruler','avenger','moonCancer','shielder'],extra2:['alterEgo','foreigner','pretender','beast','beastEresh','unBeastOlgaMarie']};
 function solve(data,o,progress=()=>{}){
  o={...o,locked:[...o.locked],ces:structuredClone(o.ces)};
@@ -25,7 +29,8 @@ function solve(data,o,progress=()=>{}){
  const extraSlot=grand&&o.grandReward!=='0'?1:0;
  const N=+o.count,F=Math.min(+o.front,N),budget=+o.cost-(+o.reserveCost||0),ceSlots=N-(+o.reserveSlots||0);
  if(!Number.isInteger(N)||N<1||N>5||!Number.isInteger(budget)||budget<0||ceSlots<0)throw Error('编队人数、预留 Cost 或礼装槽位无效。');
- const roster=data.servants.filter(s=>o.owned.includes(s.id)).map(s=>({...s,maxed:o.maxed.includes(s.id)}));
+ const guideIds = new Set(o.bond15 || []);
+ const roster=data.servants.filter(s=>o.owned.includes(s.id)).map(s=>({...s,maxed:o.maxed.includes(s.id),guide:guideIds.has(s.id)}));
  const locked=roster.filter(s=>o.locked.includes(s.id)),free=roster.filter(s=>!o.locked.includes(s.id));
  if(locked.length!==o.locked.length)throw Error('必选从者必须在候选池中。');
  if(locked.length>N)throw Error('必选从者数量超过自有编队人数。');if(roster.length<N)throw Error('候选从者不足，请增加候选或减少人数。');
@@ -42,23 +47,72 @@ function solve(data,o,progress=()=>{}){
  }
  let best=null,checked=0;const scale=o.objective==='target'?100000000:0;
  const variants=s=>o.forms[s.id]&&o.forms[s.id]!=='auto'?s.variants.filter(v=>v.key===o.forms[s.id]||v.rawKeys?.includes(o.forms[s.id])):s.variants.filter(v=>!v.key.startsWith('costume')||o.costumes);
- function options(s,ces){let rows=[];for(const v of variants(s)){for(let front=0;front<=1;front++){if(front&&!F)continue;if(o.lockedFront?.[s.id]!==undefined&&!!front!==o.lockedFront[s.id])continue;let g=gain(s,v,ces,support,o,!!front);rows.push({...g,score:g.value*(1+(originalLocked.includes(s.id)?scale:0))})}}return rows}
+ function options(s,ces,settings){let rows=[];for(const v of variants(s)){for(let front=0;front<=1;front++){if(front&&!F)continue;if(o.lockedFront?.[s.id]!==undefined&&!!front!==o.lockedFront[s.id])continue;let g=gain(s,v,ces,support,settings,!!front);rows.push({...g,score:g.value*(1+(originalLocked.includes(s.id)?scale:0))})}}return rows}
  function evaluate(ces,rawCost){let reward=null;if(extraSlot){reward=+o.grandReward>0?ces.find(c=>c.id===+o.grandReward):ces.filter(c=>!(o.fixedNormalCes||[]).includes(c.id)).sort((a,b)=>b.cost-a.cost)[0];}if(ces.length-(reward?1:0)>ceSlots)return;let ceCost=rawCost-(reward?.cost||0);checked++;if(checked%25===0)progress(checked);let cap=budget-ceCost;if(cap<0)return;
-  const need=N-locked.length;
-  // Same-cost candidates are interchangeable except identity. Keep the top N for
-  // both placements; a discarded candidate has N distinct equal/better substitutes.
-  const buckets=new Map();for(const s of free){for(const row of options(s,ces)){const key=row.cost+'-'+Number(row.front);if(!buckets.has(key))buckets.set(key,[]);buckets.get(key).push({s,row})}}
-  let keep=new Set();for(const arr of buckets.values()){arr.sort((a,b)=>b.row.score-a.row.score||a.s.no-b.s.no);let ids=new Set();for(const x of arr){ids.add(x.s.id);keep.add(x.s.id);if(ids.size>=need)break}}
-  const candidates=[...locked,...free.filter(s=>keep.has(s.id))];
-  let dp=new Map([['0,0,0',{score:0,total:0,team:[],n:0,f:0,c:0}]]);
-  for(const s of candidates){const forced=o.locked.includes(s.id),next=forced?new Map():new Map(dp),rows=options(s,ces);
-   for(const st of dp.values()){if(st.n>=N)continue;for(const g of rows){let c=st.c+g.cost,f=st.f+Number(g.front),n=st.n+1;if(c>cap||f>F||n-f>N-F)continue;let key=n+','+f+','+c,score=st.score+g.score,old=next.get(key);if(!old||score>old.score)next.set(key,{score,total:st.total+g.value,team:[...st.team,g],n,f,c})}}
-   dp=next;if(!dp.size)return;
+  for (let guides = minGuides; guides <= maxGuides; guides++) {
+   evaluateParty(ces, reward, ceCost, cap, guides);
   }
-  for(const st of dp.values())if(st.n===N&&st.f===F){let cost=st.c+ceCost+(+o.reserveCost||0);if(!best||st.score>best.score||(st.score===best.score&&cost<best.cost))best={score:st.score,total:st.total,team:st.team,ces:ces.filter(c=>c.id!==reward?.id).map(c=>c.id),grandReward:reward?.id||0,grandId,cost,ceCost};}
+ }
+ const lockedGuides = locked.filter(s => s.guide).length;
+ const freeGuides = free.filter(s => s.guide).length;
+ const openSlots = N - locked.length;
+ const minGuides = lockedGuides + Math.max(0, openSlots - (free.length - freeGuides));
+ const maxGuides = lockedGuides + Math.min(openSlots, freeGuides);
+ function evaluateParty(ces, reward, ceCost, cap, guides) {
+  // With a fixed number of active passives, each member's rounded gain is independent.
+  const settings = {...o, guides};
+  const buckets = new Map();
+  for (const servant of free) {
+   const quota = servant.guide ? guides - lockedGuides : openSlots - (guides - lockedGuides);
+   if (!quota) continue;
+   for (const row of options(servant, ces, settings)) {
+    const key = [row.cost, row.front, servant.guide].join(',');
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push({servant, row, quota});
+   }
+  }
+  const keep = new Set();
+  for (const rows of buckets.values()) {
+   rows.sort((a,b) => b.row.score - a.row.score || a.servant.no - b.servant.no);
+   const ids = new Set();
+   for (const {servant, quota} of rows) {
+    ids.add(servant.id);
+    keep.add(servant.id);
+    if (ids.size >= quota) break;
+   }
+  }
+  const candidates = [...locked, ...free.filter(s => keep.has(s.id))];
+  let dp = new Map([['0,0,0,0', {score:0,total:0,team:[],n:0,f:0,c:0,guides:0}]]);
+  for (const servant of candidates) {
+   const next = o.locked.includes(servant.id) ? new Map() : new Map(dp);
+   const rows = options(servant, ces, settings);
+   for (const st of dp.values()) {
+    const n = st.n + 1;
+    const active = st.guides + Number(servant.guide);
+    if (n > N || active > guides || n - active > N - guides) continue;
+    for (const g of rows) {
+     const c = st.c + g.cost, f = st.f + Number(g.front);
+     if (c > cap || f > F || n - f > N - F) continue;
+     const key = n+','+f+','+c+','+active;
+     const score = st.score + g.score;
+     if (!next.has(key) || score > next.get(key).score) {
+      next.set(key, {score, total:st.total+g.value, team:[...st.team,g], n,f,c,guides:active});
+     }
+    }
+   }
+   dp = next;
+   if (!dp.size) return;
+  }
+  for (const st of dp.values()) {
+   if (st.n !== N || st.f !== F || st.guides !== guides) continue;
+   const cost = st.c + ceCost + (+o.reserveCost || 0);
+   if (!best || st.score > best.score || (st.score === best.score && cost < best.cost)) {
+    best = {score:st.score,total:st.total,team:st.team,ces:ces.filter(c=>c.id!==reward?.id).map(c=>c.id),grandReward:reward?.id||0,grandId,cost,ceCost,guides};
+   }
+  }
  }
  function walk(start,chosen,cost){evaluate(chosen,cost);if(chosen.length>=ceSlots+extraSlot)return;for(let i=start;i<optional.length;i++){let c=optional[i];if(cost+c.cost<=budget+(extraSlot?12:0))walk(i+1,[...chosen,c],cost+c.cost)}}
  walk(0,required,required.reduce((a,c)=>a+c.cost,0));if(!best)throw Error('当前 Cost 下没有可行队伍。请减少必选项、降低预留费用或提高 Cost 上限。');return {...best,checked};
 }
-root.BondSolver={effect,matches,masterCost,gain,solve,grandGroups};if(typeof module!=='undefined')module.exports=root.BondSolver;
+root.BondSolver={GUIDANCE_RATE,effect,matches,masterCost,gain,solve,grandGroups};if(typeof module!=='undefined')module.exports=root.BondSolver;
 })(globalThis);
