@@ -17,8 +17,9 @@ function solve(data,o,progress=()=>{}){
  if(grand){
   const gs=data.servants.find(s=>s.id===grandId);
   if(!gs||!o.owned.includes(grandId))throw Error('请从候选池中选择已完成冠位选定的自有从者。');
-  if(o.grandMode==='duel'){
-   const classes=grandGroups[o.grandGroup];
+  const group = o.grandMode === 'duel' ? o.grandGroup : o.customGroup;
+  if(group && group !== 'any'){
+   const classes=grandGroups[group];
    if(!classes||!classes.includes(gs.class))throw Error('自有冠位从者不符合当前戴冠战职阶限制。');
    if(o.locked.some(id=>!classes.includes(data.servants.find(s=>s.id===id)?.class)))throw Error('必选从者与戴冠战职阶限制冲突。');
    o.owned=o.owned.filter(id=>classes.includes(data.servants.find(s=>s.id===id)?.class));
@@ -111,7 +112,21 @@ function solve(data,o,progress=()=>{}){
    }
   }
  }
- function walk(start,chosen,cost){evaluate(chosen,cost);if(chosen.length>=ceSlots+extraSlot)return;for(let i=start;i<optional.length;i++){let c=optional[i];if(cost+c.cost<=budget+(extraSlot?12:0))walk(i+1,[...chosen,c],cost+c.cost)}}
+ // At each depth only try the first interchangeable copy. Deeper levels
+ // still allow distinct owned copies to occupy multiple equipment slots.
+ const equivalents = optional.map(c => (o.fixedNormalCes || []).includes(c.id)
+  ? 'fixed:' + c.id : JSON.stringify([c.cost,c.e.rate,c.e.flat,c.e.clauses]));
+ function walk(start,chosen,cost) {
+  evaluate(chosen,cost);
+  if (chosen.length >= ceSlots + extraSlot) return;
+  const tried = new Set();
+  for (let i=start;i<optional.length;i++) {
+   if (tried.has(equivalents[i])) continue;
+   tried.add(equivalents[i]);
+   const c = optional[i];
+   if (cost+c.cost <= budget+(extraSlot?12:0)) walk(i+1,[...chosen,c],cost+c.cost);
+  }
+ }
  walk(0,required,required.reduce((a,c)=>a+c.cost,0));if(!best)throw Error('当前 Cost 下没有可行队伍。请减少必选项、降低预留费用或提高 Cost 上限。');return {...best,checked};
 }
 root.BondSolver={GUIDANCE_RATE,effect,matches,masterCost,gain,solve,grandGroups};if(typeof module!=='undefined')module.exports=root.BondSolver;
