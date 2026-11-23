@@ -50,7 +50,7 @@ function emptyPickerAction() {
  $('pickerGrid').scrollTop = 0;
 }
 function openPicker(kind,context){picker={kind,context,page:0,filters:structuredClone(filtersByKind[kind]),owned:[...state.owned],maxed:[...state.maxed],bond15:[...state.bond15],ces:structuredClone(state.ces),levels:{...state.ceLevels},mlb:Object.fromEntries(D.catalogCes.map(c=>[c.id,state.ces[c.id]?.mlb??state.ceMlb?.[c.id]??false])),opener:document.activeElement};
- if (kind === 'servant' && context.target !== 'pool' && activeGroupSelect()) {
+ if (kind === 'servant' && activeGroupSelect()) {
   picker.questClasses = BondSolver.grandGroups[activeGroupSelect().value];
   picker.questLabel = activeGroupSelect().selectedOptions[0].textContent;
   picker.questGroup = activeGroupSelect().value;
@@ -108,7 +108,10 @@ if(el.dataset.required){const id=+el.dataset.required,c=picker.ces[id];c.require
 $('confirmPicker').onclick=()=>{if(picker.context.target==='pool'){state.owned=picker.owned;state.maxed=picker.maxed;state.bond15=picker.bond15}else{state.ces=picker.ces;state.ceLevels=picker.levels;state.ceMlb={...state.ceMlb,...picker.mlb}}changed();closePicker()};
 $('clearPickerSelection').onclick=()=>selectItem(0);$('pickerSearch').oninput=()=>{picker.page=0;renderPicker();$('pickerGrid').scrollTop=0};$('pickerSort').onchange=()=>{sortByKind[picker.kind]=$('pickerSort').value;persistPicker();picker.page=0;renderPicker();$('pickerGrid').scrollTop=0};$('pickerPrev').onclick=()=>{picker.page--;renderPicker();$('pickerGrid').scrollTop=0};$('pickerNext').onclick=()=>{picker.page++;renderPicker();$('pickerGrid').scrollTop=0};
 $('selectFiltered').onclick=()=>{if(picker.context.target==='pool')picker.owned=[...new Set([...picker.owned,...pickerItems().map(s=>s.id)])];else{const merged=new Set([...Object.keys(picker.ces).filter(id=>picker.ces[id].enabled).map(Number),...pickerItems().map(c=>c.id)]);for(const id of merged)picker.ces[id].enabled=true}renderPicker()};
-$('clearCandidates').onclick=()=>{if(picker.context.target==='pool')picker.owned=[...state.locked];else for(const c of Object.values(picker.ces)){c.enabled=false;c.required=false}renderPicker()};
+$('clearCandidates').onclick=()=>{if(picker.context.target==='pool'){
+ const visible = new Set(pickerItems().map(servant => servant.id));
+ picker.owned = picker.owned.filter(id => !visible.has(id) || state.locked.includes(id));
+}else for(const c of Object.values(picker.ces)){c.enabled=false;c.required=false}renderPicker()};
 function filterField(title,key,values){return `<fieldset><legend>${title}</legend><div class="filter-options">${values.map(([v,label])=>`<label class="filter-option ${key==='npColors'?'np-'+v:''}"><input type="checkbox" data-filter="${key}" value="${esc(v)}" ${filterDraft[key].includes(v)?'checked':''}><span>${key==='classes'?classIcon(v):''}${esc(label)}</span></label>`).join('')}</div></fieldset>`}
 function renderFilterFields(){const sv=picker.kind==='servant';$('filterFields').innerHTML=(sv?filterField(picker.questClasses?'出击范围内的职阶':'职阶','classes',[...new Set((picker.questClasses || D.servants.map(s=>s.class)).map(c=>c==='beastEresh'?'beast':c))].map(c=>[c,classNames[c]||c])):'')+filterField('稀有度','rarities',(sv?[0,1,2,3,4,5]:[1,2,3,4,5]).map(n=>[n,n===0?'☆ 0星':'★'.repeat(n)]))+(sv?filterField('宝具卡色','npColors',[['Buster','Buster · 红'],['Arts','Arts · 蓝'],['Quick','Quick · 绿']])+filterField('特性（包含可用形态）','traits',Object.entries(traits).map(([id,name])=>[+id,name])):filterField('效果类型','effects',Object.entries(effectNames)));}
 $('openFilters').onclick=()=>{filterDraft=structuredClone(picker.filters);renderFilterFields();$('filterDialog').showModal()};$('filterFields').onchange=e=>{const k=e.target.dataset.filter;if(!k)return;const v=['rarities','traits'].includes(k)?+e.target.value:e.target.value;filterDraft[k]=filterDraft[k].filter(x=>x!==v);if(e.target.checked)filterDraft[k].push(v)};

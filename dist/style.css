@@ -551,3 +551,13 @@ dialog #toast { position: absolute; }
 #faceChoices img {width:60px;height:60px;object-fit:cover}
 #faceChoices [aria-pressed=true] {border-color:var(--gold-light);background:#314767}
 @media(pointer:coarse){.face-button{min-height:44px}}
+
+#teamsDialog {width:min(440px,96vw)}
+.team-library {padding:16px;display:grid;gap:12px;max-height:75dvh;overflow:auto}
+.team-library p {margin:0;color:var(--text-muted);font-size:13px}
+.team-library form,.team-library label {display:grid;gap:6px}
+.team-library input,.team-library select {width:100%;min-width:0;font-size:16px}
+.team-library button {min-height:44px}
+.team-actions {display:flex;gap:8px}
+.party-footer {flex-wrap:wrap}
+#manageTeams {border-color:var(--gold-mid);color:var(--gold-light)}
