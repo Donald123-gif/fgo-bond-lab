@@ -137,6 +137,9 @@ $('partyGrid').onchange=e=>{if(e.target.dataset.svtLevel){const input = e.target
  state.svtLevels[input.dataset.svtLevel] = level;
  save();
  return}if(e.target.hasAttribute('data-grand-bond')){$('grandBond').value=e.target.value;changed()}else if(e.target.dataset.form){state.forms[+e.target.dataset.form]=e.target.value;changed()}};
+$('openGuide').addEventListener('click', () => $('guideDialog').showModal());
+$('guideDialog').addEventListener('close', () => $('openGuide').focus({preventScroll: true}));
+
 $('manageServants').onclick=()=>openPicker('servant',{target:'pool'});$('manageCes').onclick=()=>openPicker('ce',{target:'cePool'});
 $('clearParty').onclick=()=>{state.manualSlots=initial().manualSlots;$('grandId').value='0';state.resolvedReward=0;changed()};
 function request(){let o={...inputs(),...state,ces:structuredClone(state.ces),manualSlots:state.manualSlots.map(sl=>({...sl,servantId:sl.autoServant&&!sl.servantLocked?0:sl.servantId,ceId:sl.autoCE&&!sl.ceLocked?0:sl.ceId}))};for(const id of ['level','cost','base','count','front','support','extra','tea','reserveSlots','reserveCost','grandId','supportReward'])o[id]=+$(id).value;for(const id of ids){const el=$(id);if(el.type==='number'&&!el.checkValidity())throw Error('请检查输入范围：'+el.parentElement.textContent.trim())}o.front=state.order.slice(0,3).filter(i=>i<o.count).length;if(o.front>o.count)throw Error('自有前排人数不能超过自有从者人数。');if(o.manualSlots.slice(o.count).some(s=>s.servantId||s.ceId))throw Error('未出击的卡位仍有固定配置，请清空对应槽位或增加自有从者人数。');

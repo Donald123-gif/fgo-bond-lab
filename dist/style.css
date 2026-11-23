@@ -561,3 +561,40 @@ dialog #toast { position: absolute; }
 .team-actions {display:flex;gap:8px}
 .party-footer {flex-wrap:wrap}
 #manageTeams {border-color:var(--gold-mid);color:var(--gold-light)}
+
+#openGuide {
+  min-height: 44px;
+  padding: 4px 12px;
+  color: var(--gold-light);
+  border-color: var(--gold-dark);
+  font-size: .875rem;
+}
+#guideDialog { width: min(34rem, calc(100% - 1.25rem)); overflow: hidden; }
+#guideDialog[open] { display: flex; flex-direction: column; }
+.guide-content {
+  padding: 1.15rem clamp(1rem, 4vw, 1.65rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.guide-steps { margin: 0; padding-inline-start: 1.65rem; font-size: 1rem; }
+.guide-steps li { padding-inline-start: .25rem; }
+.guide-steps li + li { margin-top: .85rem; }
+.guide-steps li::marker { color: var(--gold-mid); font-weight: 700; }
+.guide-steps strong { color: var(--gold-light); }
+.guide-steps p { margin: .15rem 0 0; color: #d3e0f3; }
+.guide-footer {
+  display: flex;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  padding: .5rem 1rem;
+  background: var(--bg-chaldea);
+  border-top: 1px solid var(--line);
+}
+.guide-footer a { display: inline-flex; align-items: center; min-height: 44px; }
+.guide-footer button { min-height: 44px; color: var(--gold-light); border-color: var(--gold-dark); }
+@media (max-width: 360px) {
+  .party-panel > .section-title > .step { display: none; }
+}
