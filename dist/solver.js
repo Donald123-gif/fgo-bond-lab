@@ -5,12 +5,81 @@ function effect(ce,mlb=true){return ce.effects.find(e=>e.mlb===mlb)||ce.effects[
 function matches(traits,e){return !e.clauses.length||e.clauses.some(row=>row.every(t=>traits.includes(t)))}
 function masterCost(l){if(l<=90)return 56+Math.floor((l-1)/2);if(l<=109)return 100+Math.floor((l-89)/3);if(l<=126)return 106+Math.floor((l-107)/4);if(l<140)return 111;return 112+Math.floor((l-140)/10)}
 const GUIDANCE_RATE = 25;
-function gain(s,variant,ces,support,o,front){const guidanceRate = (o.guides || 0) * GUIDANCE_RATE;
- let rate=(+o.extra||0)+guidanceRate,flat=0,sources=[];
- if (guidanceRate) sources.push({name:'绊15 · 梦火指引',rate:guidanceRate,flat:0});
- for(const c of ces){if(matches(variant.traits,c.e)){rate+=c.e.rate;flat+=c.e.flat;if(c.e.rate||c.e.flat)sources.push({name:c.name,rate:c.e.rate,flat:c.e.flat})}}for(const sup of (Array.isArray(support)?support:(support?[support]:[]))){if(matches(variant.traits,sup.e)){rate+=sup.e.supportRate;flat+=sup.e.flat;sources.push({name:sup.sourceLabel||'助战 · '+sup.name,rate:sup.e.supportRate,flat:sup.e.flat})}}let raw=o.base+Math.floor(o.base*rate/100+1e-8)+flat;let value=Math.floor(raw*(front?1.2:1)+1e-8)*o.tea;if(s.maxed)value=0;return {value,rate,flat,sources,front,variant:variant.key,cost:variant.cost,id:s.id}}
+const MAX_BOND_RATE = 500;
+function gain(s, variant, ces, support, o, front) {
+ const sources = [];
+ let rawRate = 0, flat = 0;
+ function add(name, rate, points) {
+  if (!rate && !points) return;
+  rawRate += rate;
+  flat += points;
+  sources.push({name, rate, flat:points});
+ }
+ add('全队额外加成', Number(o.extra) || 0, 0);
+ add('绊15 · 梦火指引', (o.guides || 0) * GUIDANCE_RATE, 0);
+ for (const ce of ces) {
+  if (matches(variant.traits, ce.e)) add(ce.name, ce.e.rate, ce.e.flat);
+ }
+ const borrowed = Array.isArray(support) ? support : support ? [support] : [];
+ for (const ce of borrowed) {
+  if (matches(variant.traits, ce.e)) add(ce.sourceLabel || '助战 · ' + ce.name, ce.e.supportRate, ce.e.flat);
+ }
+
+ // Formation adjusts the base first. The game floors again after all matching
+ // percentage effects, then adds flat bonuses before applying the teapot.
+ const supportIndex = o.order?.indexOf(5) ?? -1;
+ const positionRate = (front ? 20 : 0) + (supportIndex >= 0 && supportIndex < 3 ? 4 : 0);
+ const positionBase = Math.floor(o.base * (100 + positionRate) / 100);
+ const rate = Math.min(rawRate, MAX_BOND_RATE);
+ // The data encodes rates in tenths of a percent, including 2.5% CEs.
+ const ratePoints = Math.floor(positionBase * Math.round(rate * 10) / 1000);
+ const value = s.maxed ? 0 : (positionBase + ratePoints + flat) * o.tea;
+ return {id:s.id, variant:variant.key, cost:variant.cost, front, value,
+  positionRate, positionBase, rawRate, rate, ratePoints, flat, sources};
+}
 const grandGroups={saber:['saber'],archer:['archer'],lancer:['lancer'],rider:['rider'],caster:['caster'],assassin:['assassin'],berserker:['berserker'],extra1:['ruler','avenger','moonCancer','shielder'],extra2:['alterEgo','foreigner','pretender','beast','beastEresh','unBeastOlgaMarie']};
-function solve(data,o,progress=()=>{}){
+// Compare the borrowed slots jointly with the owned party. A pair can be
+// discarded only if another gives at least its rate AND flat points to every form.
+function solve(data, o, progress = () => {}) {
+ const rewardActive = o.grandMode && o.grandMode !== 'off' && o.supportGrand;
+ const reward = rewardActive ? o.supportReward : 0;
+ if (o.support !== 'auto' && reward !== 'auto') return solveParty(data, o, progress);
+ const owned = new Set(o.owned);
+ const classes = o.grandMode && o.grandMode !== 'off' && grandGroups[o.grandGroup];
+ const forms = data.servants.filter(s => owned.has(s.id) && (!classes || classes.includes(s.class)))
+  .flatMap(s => s.variants);
+ function choices(setting, mlb) {
+  const cards = setting === 'auto' ? [null, ...data.ces] : [data.ces.find(c => c.id === +setting)];
+  return cards.map(card => {
+   const e = card && effect(card, mlb);
+   const profile = forms.flatMap(v => e && matches(v.traits, e) ? [e.supportRate, e.flat] : [0, 0]);
+   return {id:card?.id || 0, profile};
+  });
+ }
+ const normalChoices = choices(o.support, o.supportMlb);
+ const rewardChoices = choices(reward, o.supportRewardMlb);
+ let pairs = [];
+ const dominates = (a, b) => a.every((n, i) => n >= b[i]);
+ for (const normal of normalChoices) {
+  for (const extra of rewardChoices) {
+   if (normal.id && normal.id === extra.id) continue;
+   const profile = normal.profile.map((n,i) => n + extra.profile[i]);
+   if (pairs.some(p => dominates(p.profile, profile))) continue;
+   pairs = pairs.filter(p => !dominates(profile, p.profile));
+   pairs.push({support:normal.id, supportReward:extra.id, profile});
+  }
+ }
+ let best, checked = 0;
+ for (const {support, supportReward} of pairs) {
+  const r = solveParty(data, {...o, support, supportReward}, n => progress(checked + n));
+  checked += r.checked;
+  progress(checked);
+  if (!best || r.score > best.score || (r.score === best.score && r.cost < best.cost))
+   best = {...r, support, supportReward};
+ }
+ return {...best, checked};
+}
+function solveParty(data,o,progress=()=>{}){
  o={...o,locked:[...o.locked],ces:structuredClone(o.ces)};
  const grand=!!o.grandMode&&o.grandMode!=='off',grandId=grand?+o.grandId:0;
  const originalLocked=[...o.locked];

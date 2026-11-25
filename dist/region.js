@@ -28,7 +28,7 @@
  status.textContent = '正在载入' + names[region] + '数据…';
  document.getElementById('regionLabel').textContent = names[region] + '快照';
  try {
-  await load(region === 'CN' ? 'data.js?v=7' : 'data-jp.js?v=11');
+  await load(region === 'CN' ? 'data.js?v=20' : 'data-jp.js?v=20');
   if (globalThis.FGO_DATA?.region !== region) throw Error('region mismatch');
   for (const link of document.querySelectorAll('[data-source]')) {
    link.href = FGO_DATA.sources[link.dataset.source];
@@ -37,7 +37,7 @@
   const portraits = await fetch('portraits-' + region + '.json?v=15');
   if (!portraits.ok) throw Error('portrait catalog unavailable');
   globalThis.FGO_PORTRAITS = await portraits.json();
-  for (const file of ['app','picker','results','teams']) await load(file + '.js?v=18');
+  for (const file of ['app','picker','results','teams']) await load(file + '.js?v=20');
   if (FGO_DATA.masterCosts) document.getElementById('level').max = Math.max(...Object.keys(FGO_DATA.masterCosts).map(Number));
   document.querySelector('main').inert = false;
   document.querySelector('.mobile-dock').inert = false;

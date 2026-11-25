@@ -71,7 +71,11 @@ for e in get('ces'):
  effects=[]
  for sk in e['skills']:
   for f in sk['functions']:
-   if f['funcType']!='servantFriendshipUp' or f['funcTargetType']!='ptFull':continue
+   if f['funcType']!='servantFriendshipUp':continue
+   # Darius's Heroic Spirit Portrait grants the same party-wide +50 as the
+   # other nine, although its function target in both exports is "self".
+   darius_portrait=e['id']==9401060 and f['funcTargetType']=='self'
+   if f['funcTargetType']!='ptFull' and not darius_portrait:continue
    v=f['svals'][0]
    if v.get('EventId') or f.get('funcquestTvals'):continue
    clauses=f.get('script',{}).get('overwriteTvals')

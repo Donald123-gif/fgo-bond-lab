@@ -101,3 +101,72 @@ assert.equal(solve(guideTest,{...guideOpts,objective:'team'}).guides,1);
 assert.equal(solve(guideTest,{...guideOpts,count:1,owned:[1],bond15:[2,3]}).total,1200);
 assert.equal(solve(guideTest,{...guideOpts,count:1,owned:[1],maxed:[],bond15:[1]}).total,1500);
 console.log('Bond 15 passive: stacking, target priority, self gain, benched guides, and 40 exhaustive comparisons passed.');
+
+// Fixed observations, independent of the optimizer's scoring implementation.
+const supportStarts = [0, 1, 5, 2, 3, 4], supportReserves = [0, 1, 2, 3, 4, 5];
+function equipped(data, id, mlb = true) {
+ const card = data.ces.find(ce => ce.id === id);
+ assert.ok(card, 'missing bond effect on CE ' + id);
+ return {...card, e:card.effects.find(e => e.mlb === mlb) || card.effects[0]};
+}
+for (const data of [cnCatalog, jpCatalog]) {
+ const member = data.servants.find(s => s.no === 284);
+ const gainAt = (front, options, ces = [], support = null) =>
+  gain(member, member.variants[0], ces, support, {base:1000, tea:1, order:supportStarts, ...options}, front).value;
+ // Both 8th Anniversary notices: one starting support gives 24% / 4% even without a support CE.
+ assert.deepEqual([gainAt(true, {}), gainAt(false, {})], [1240, 1040]);
+ assert.deepEqual([gainAt(true, {order:supportReserves}), gainAt(false, {order:supportReserves})], [1200, 1000]);
+ const teatime = equipped(data, 910);
+ assert.equal(gainAt(true, {base:915}, [], teatime), 1304);
+ assert.equal(gainAt(false, {base:915}, [], teatime), 1093);
+ assert.equal(gainAt(true, {base:815, order:supportReserves}, [], teatime), 1124);
+ const portrait = equipped(data, 108);
+ assert.equal(gainAt(true, {tea:2}, [portrait]), 2580);
+ assert.equal(gainAt(false, {tea:3}, [], portrait), 3270);
+ const fraction = data.ces.find(c => c.effects.some(e => e.mlb && e.rate === 2.5));
+ assert.equal(gainAt(true, {base:999, tea:2}, [equipped(data, fraction.id), portrait]), 2636);
+ assert.equal(gainAt(true, {extra:490, guides:1, tea:2}, [portrait], teatime), 14980);
+
+ // Southern Africa, base 2636, support Oberon in front. Published settlement:
+ // https://silentmajo.blog89.fc2.com/blog-entry-6458.html
+ const party = [357,239,284,31,38].map(no => data.servants.find(s => s.no === no).id);
+ const observed = solve(data, {...opts, count:5, front:2, order:supportStarts, owned:party, locked:party,
+  lockedFront:Object.fromEntries(party.map((id, i) => [id, i < 2])), base:2636, cost:200,
+  tea:1, maxed:[], bond15:[], extra:0, support:910, supportMlb:true,
+  ces:Object.fromEntries([330,1410,2124,99].map(id => [id,{enabled:true, required:true, mlb:true}]))});
+ assert.deepEqual(party.map(id => observed.team.find(g => g.id === id).value), [4298,4298,4161,4161,4161]);
+ assert.equal(observed.total, 21079);
+}
+// At base 915, a team with three own starters gains 252 points from 5%, versus 250 from a portrait.
+const rateOrFlat = solve(cnCatalog, {...opts, base:915, count:5, front:3, order:supportReserves,
+ cost:200, reserveSlots:4, extra:0, support:0, tea:1, maxed:[], locked:[], bond15:[],
+ ces:Object.fromEntries([99,910].map(id => [id,{enabled:true,required:false,mlb:true}]))});
+assert.deepEqual(rateOrFlat.ces, [910]);
+assert.equal(rateOrFlat.total, 5376);
+console.log('Settlement fixtures passed for both regions: formation, rounding, portraits, effect cap, tea and optimal CE.');
+
+// Compare automatic borrowed gear with explicit exhaustive equipment choices.
+for (const data of [cnCatalog, jpCatalog]) {
+ const member = data.servants.find(s => s.no === 284);
+ const basic = {...opts, count:1, front:1, owned:[member.id], locked:[member.id], ces:{},
+  maxed:[], forms:{}, grandMode:'off', base:1000, tea:1, order:supportStarts};
+ for (const base of [10, 1000]) for (const mlb of [false, true]) {
+  const config = {...basic, base, supportMlb:mlb};
+  const automatic = solve(data, {...config, support:'auto'});
+  const fixed = [0,...data.ces.map(c=>c.id)].map(support=>solve(data,{...config,support}).total);
+  assert.equal(automatic.total, Math.max(...fixed));
+  assert.equal(solve(data,{...config,support:automatic.support}).total, automatic.total);
+ }
+}
+for (const normal of [0, 1, 'auto']) for (const reward of [0, 2, 'auto']) {
+ if(normal!=='auto' && reward!=='auto') continue;
+ const opts = {...co, support:normal, supportGrand:true, supportReward:reward, supportRewardMlb:true};
+ const r = solve(crownData,opts);
+ const totals = [];
+ for (const support of normal==='auto'?[0,1,2]:[normal])
+  for (const supportReward of reward==='auto'?[0,1,2]:[reward])
+   if(!support || support!==supportReward) totals.push(solve(crownData,{...opts,support,supportReward}).total);
+ assert.equal(r.total, Math.max(...totals));
+ assert.ok(!r.support || r.support!==r.supportReward);
+}
+console.log('Automatic support gear matches exhaustive fixed picks for both regions, mixed crown slots and MLB states.');

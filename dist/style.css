@@ -183,6 +183,7 @@ h1 span { color: var(--gold-light); }
 .board-form { margin-top: 7px; color: #a7bed7; font-size: 9px; line-height: 1.75; }
 .form-details { margin-top: 8px; color: var(--text-muted); font-size: 10px; }
 .form-details summary { color: #e5c985; }
+.bond-details ul { margin: 4px 0; padding-inline-start: 1.3em; overflow-wrap: anywhere; }
 .form-details p { line-height: 1.85; overflow-wrap: anywhere; }
 
 /* Preserve drag hit-testing and highlight the correct drop target. */
