@@ -249,3 +249,38 @@ noSupport.party[4].servantId=0;
 assert.equal(BBC.build(noSupport,bbcNames,images).config.assistMode,'冠位助战仅礼装');
 assert.equal(BBC.build({...noSupport,grandSupport:false},bbcNames,images).config.assistMode,'仅礼装');
 console.log('BBC export: regional names, six-slot order, ordinary/crown image filters, limits and planner snapshot passed.');
+const importBBC=require('./dist/bbc-import.js');
+for (const data of [cnCatalog,jpCatalog]) {
+ const server=data.region==='JP'?'JP':'CH';
+ const cfg={server,assistIdx:4,assistMode:'冠位助战',assistEquip:[['秩序善','星恶'],null,['秩序女']],fullEquip:1,
+  servantLevel:110,round1_turn0_skill:[1,3],...Object.fromEntries(Array.from({length:6},(_,i)=>['servant_'+i+'_name',null]))};
+ const ids=[284,38,316].map(no=>data.servants.find(s=>s.no===no).id);
+ cfg.servant_0_name=bbcNames[ids[0]];cfg.servant_4_name=bbcNames[ids[2]];cfg.servant_5_name=bbcNames[ids[1]];
+ const r=importBBC.convert(cfg,data,bbcNames,BBC);
+ assert.deepEqual(r.state.order,[0,2,3,4,5,1]);assert.equal(r.state.supportServant,ids[2]);
+ assert.equal(r.state.inputs.support,'2052');assert.equal(r.state.inputs.supportReward,'2233');
+ assert.ok(r.warnings.some(w=>w.includes('多个候选')));
+ const old={...cfg,assistEquip:'迦勒底午茶时光',assistMode:'仅礼装'};
+ assert.equal(importBBC.convert(old,data,bbcNames,BBC).state.inputs.support,'910');
+ assert.equal(importBBC.convert({...old,assistMode:'仅从者'},data,bbcNames,BBC).state.inputs.support,'0');
+ const st={...r.state,owned:ids,maxed:[],bond15:[],forms:{},svtLevels:{},ceLevels:{},ces:{},
+  inputs:{...r.state.inputs,base:'915'},portraits:{},autoSupport:{}};
+ st.manualSlots[0].ceId=330;
+ const party=st.order.map((idx,i)=>{const support=idx===5;const id=support?st.supportServant:st.manualSlots[idx].servantId;
+  return {support,servantId:id,form:id?'base':null,ce:support?bbcCard(2052,'检查报告',true):null,reward:support?bbcCard(2233,'献给幸福的新娘',true):null};});
+ const generated=BBC.build({region:data.region,version:1,grandSupport:true,party,settings:st},bbcNames,null).config;
+ assert.deepEqual(generated.round1_turn0_skill,[1,3]);
+ assert.deepEqual(generated.assistEquip,cfg.assistEquip);
+ const back=importBBC.convert(generated,data,bbcNames,BBC).state;
+ assert.equal(back.manualSlots[0].ceId,330);assert.deepEqual(st.order,back.order);assert.deepEqual(st.inputs,back.inputs);
+ const moved=structuredClone(generated);
+ [moved.servant_0_name,moved.servant_5_name]=[moved.servant_5_name,moved.servant_0_name];
+ moved.assistEquip=['星恶',null,null];
+ const edited=importBBC.convert(moved,data,bbcNames,BBC).state;
+ assert.equal(edited.manualSlots[edited.order[5]].ceId,330);
+ assert.equal(edited.inputs.support,'2437');assert.equal(edited.inputs.supportReward,'0');
+ const malformed=structuredClone(generated);malformed.chaldeaBondLab.settings.manualSlots=null;
+ assert.throws(()=>importBBC.convert(malformed,data,bbcNames,BBC));
+ assert.throws(()=>importBBC.convert({...cfg,server:'CNTW'},data,bbcNames,BBC));
+}
+console.log('BBC imports: native, legacy and crown configurations, edited parties, regional round trips and invalid files passed.');

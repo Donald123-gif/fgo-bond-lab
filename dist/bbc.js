@@ -46,7 +46,24 @@ const BBChannel = (() => {
    Object.assign(config,{[prefix+'turns']:1,[prefix+'extraStrategy']:null,[prefix+'extraSkill']:[],
     [prefix+'turn0_skill']:[],[prefix+'turn0_np']:[],[prefix+'turn0_strategy']:null,[prefix+'turn0_condition']:null});
   }
-  config.chaldeaBondLab = {...snapshot, warnings};
+  const {bbcBattle,...settings}=snapshot.settings||{};
+  if (bbcBattle?.signature===JSON.stringify([assistIdx,...party.map(p=>p.servantId)])) {
+   Object.assign(config,bbcBattle.fields);
+   // A BBC slot may contain an ordered list of acceptable images. Preserve
+   // those alternatives while the corresponding web selection stays the same.
+   if(bbcBattle.grand===grandSupport && Array.isArray(bbcBattle.gear)){
+    const original=typeof bbcBattle.assistEquip==='string'?[bbcBattle.assistEquip,null,null]:bbcBattle.assistEquip;
+    if(Array.isArray(original)){
+     const available=v=>!images||v==null||(Array.isArray(v)?v:[v]).every(n=>typeof n==='string'&&images.has(n.toLowerCase()));
+     if(available(original[0]) && bbcBattle.gear[0]===(support.ce?.id||0)) config.assistEquip[0]=original[0]??null;
+     if(grandSupport && available(original[1]) && available(original[2]) && bbcBattle.gear[1]===(support.reward?.id||0)) {
+      config.assistEquip[1]=original[1]??null;config.assistEquip[2]=original[2]??null;
+     }
+    }
+   }
+  } else if(bbcBattle) warnings.push('编队站位或成员已更改，请在 BBC 重新设置战斗指令。');
+  const bbcFields=Object.fromEntries([...party.map((_,i)=>'servant_'+i+'_name'),'assistIdx','assistMode','assistEquip','fullEquip','servantLevel'].map(k=>[k,config[k]]));
+  config.chaldeaBondLab = {...snapshot,settings,bbcFields,warnings};
   return {config,warnings};
  }
  function filename(region) {
@@ -83,7 +100,7 @@ const BBChannel = (() => {
   catch(e){await stream.abort().catch(()=>{});await settings.removeEntry(name).catch(()=>{});throw e;}
   return {name,warnings};
  }
- return {build,write,filename};
+ return {build,write,filename,imageAliases};
 })();
 if (typeof module!=='undefined') module.exports=BBChannel;
 if (typeof document!=='undefined') {
@@ -147,6 +164,50 @@ if (typeof document!=='undefined') {
    message.textContent=e.name==='AbortError'?'已取消选择目录。':e.name==='SecurityError'||e.name==='NotAllowedError'?'浏览器未允许访问本机目录。可下载队伍文件，在 BBC「文件」中打开。':e.message;
   }finally{busy=false;$('bbcExport').disabled=false;}
  }
+ const inputFile=$('bbcFile');
+ $('bbcImport').onclick=()=>{if(!busy){inputFile.value='';inputFile.click();}};
+ inputFile.onchange=async()=>{
+  const file=inputFile.files?.[0];if(!file||busy)return;
+  busy=true;$('bbcImport').disabled=$('bbcExport').disabled=true;
+  feedback.hidden=false;$('bbcChange').hidden=typeof window.showDirectoryPicker!=='function';
+  try {
+   const cfg=JSON.parse((await file.text()).replace(/^\uFEFF/,''));
+   const region=BBCImport.regionOf(cfg,D.region);
+   const key=region==='CN'?'chaldea-bond-v1':'chaldea-bond-v1-JP';
+   const load=async url=>{const r=await fetch(url);if(!r.ok)throw Error('读取资料失败，请重试。');return r;};
+   let data=D;
+   if(region!==D.region){
+    const raw=(await (await load(region==='CN'?'data.js?v=20':'data-jp.js?v=20')).text()).trim();
+    const prefix='globalThis.FGO_DATA=';
+    if(!raw.startsWith(prefix)||!raw.endsWith(';'))throw Error('服务器资料格式错误。');
+    data=JSON.parse(raw.slice(prefix.length,-1));
+   }
+   let names=await (await load('bbc-names.json?v=1')).json();
+   if(rootHandle && await rootHandle.queryPermission({mode:'read'})==='granted'){
+    try {
+     const f=await rootHandle.getFileHandle('servant_info_'+(region==='CN'?'CH':'JP')+'.json');
+     const catalog=JSON.parse((await (await f.getFile()).text()).replace(/^\uFEFF/,''));
+     names={...names,...Object.fromEntries(Object.entries(catalog).filter(([,v])=>v?.SN).map(([name,v])=>[v.SN,name]))};
+    }catch{/* Use the bundled dictionary when the installation has moved. */}
+   }
+   const previous=region===D.region?{...state,inputs:inputs()}:JSON.parse(localStorage.getItem(key)||'{}');
+   const imported=BBCImport.convert(cfg,data,names,BBChannel,previous);
+   const label=region==='CN'?'国服':'日服';
+   const notice='已从 BBC 导入「'+file.name+'」。'+imported.warnings.join(' ');
+   if(!confirm('用「'+file.name+'」替换'+label+'当前编队？已命名保存的方案会保留。'+(imported.warnings.length?'\n\n'+imported.warnings.join('\n'):''))){
+    message.textContent='已取消导入。';return;
+   }
+   localStorage.setItem(key,JSON.stringify(imported.state));
+   try{sessionStorage.setItem('bbc-import-notice-'+region,notice);}catch{}
+   const url=new URL(location.href);url.searchParams.set('region',region);url.hash='workspace';
+   if(region===D.region){history.replaceState(null,'',url.href);location.reload();}else location.assign(url.href);
+  } catch(e){message.textContent=e instanceof SyntaxError?'文件不是有效的 JSON，当前编队已保留。':e.message;}
+  finally{busy=false;$('bbcImport').disabled=$('bbcExport').disabled=false;}
+ };
+ try{
+  const key='bbc-import-notice-'+D.region,notice=sessionStorage.getItem(key);
+  if(notice){feedback.hidden=false;message.textContent=notice;sessionStorage.removeItem(key);}
+ }catch{}
  $('bbcExport').onclick=()=>exportTeam();
  $('bbcChange').onclick=()=>exportTeam(false,true);
  $('bbcDownload').onclick=()=>exportTeam(true);
