@@ -170,3 +170,53 @@ for (const normal of [0, 1, 'auto']) for (const reward of [0, 2, 'auto']) {
  assert.ok(!r.support || r.support!==r.supportReward);
 }
 console.log('Automatic support gear matches exhaustive fixed picks for both regions, mixed crown slots and MLB states.');
+
+// Explicit equipment subsets form an oracle independent of optional-portrait pruning.
+const portraitCards = [
+ ...[330,910,99,100,108].map(id=>cnCatalog.ces.find(c=>c.id===id))
+];
+const smallRoster = [2,4,7,9].map((cost,i)=>({...make(i+1,cost,[]),class:'saber'}));
+const portraitData = {servants:smallRoster,ces:portraitCards};
+for (let seed=0;seed<60;seed++) {
+ const grand = seed%3===0, requiredId = seed%5===0 ? 108 : 0;
+ const config = {...co, owned:[1,2,3,4], locked:[1], count:2, front:1, cost:10+seed%31,
+  reserveSlots:seed%2, reserveCost:1, base:[400,915,999,1000,1001,2000][seed%6],
+  maxed:seed%4===0?[2,3]:[], bond15:seed%4===0?[2]:[], extra:seed%7===0?498:0,
+  objective:seed%2?'team':'target',tea:1+seed%3,order:seed%2?supportStarts:supportReserves,
+  grandMode:grand?'duel':'off',grandReward:grand && requiredId ? String(requiredId) : 'auto',
+  support:0, supportGrand:false, fixedNormalCes:[]};
+ const settings = (mask, force) => Object.fromEntries(portraitCards.map((c,i)=>[c.id,{
+  enabled:!!(mask & (1<<i)), required:c.id===requiredId || force, mlb:true
+ }]));
+ let oracle;
+ for(let mask=0;mask<32;mask++){
+  if(requiredId && !(mask & 16)) continue;
+  let row;
+  try { row=solve(portraitData,{...config,ces:settings(mask,true)}); }
+  catch(error){assert.match(error.message,/Cost|礼装超出/);continue;}
+  if(!oracle||row.score>oracle.score||(row.score===oracle.score&&row.cost<oracle.cost))oracle=row;
+ }
+ const optimized=()=>solve(portraitData,{...config,ces:settings(31,false)});
+ if(!oracle){assert.throws(optimized);continue;}
+ const result=optimized();
+ assert.deepEqual([result.score,result.cost],[oracle.score,oracle.cost],'portrait seed '+seed);
+ assert.equal(result.total,result.team.reduce((sum,g)=>sum+g.value,0));
+ const equippedIds=[...result.ces,...(result.grandReward?[result.grandReward]:[])];
+ const effects=equippedIds.map(id=>equipped(portraitData,id));
+ for(const g of result.team){
+  const sv=smallRoster.find(s=>s.id===g.id);
+  const recalculated=gain({...sv,maxed:config.maxed.includes(g.id)},sv.variants[0],effects,null,{...config,guides:result.guides},g.front);
+  assert.deepEqual([g.value,g.flat,g.rate],[recalculated.value,recalculated.flat,recalculated.rate]);
+ }
+}
+console.log('Portrait pruning: 60 independent exhaustive checks of score, minimum cost and individual gains passed.');
+const borrowedPair = {servants:[smallRoster[0]], ces:[
+ {...portraitCards[1], effects:[{mlb:true, rate:5, supportRate:5, flat:0, clauses:[]}]}, portraitCards[2]
+]};
+for (const [base,extra,front,expected] of [[999,0,0,99],[1200,0,0,910],[915,0,1,910],[1500,499,1,99],[1800,500,0,99]]) {
+ const config = {...opts,count:1,front,base,extra,order:supportReserves,tea:1,owned:[1],locked:[1],ces:{},supportMlb:true};
+ const auto = solve(borrowedPair,{...config,support:'auto'});
+ assert.equal(auto.support,expected);
+ assert.equal(auto.total,Math.max(...[0,99,910].map(support=>solve(borrowedPair,{...config,support}).total)));
+ assert.equal(auto.checked,1);
+}

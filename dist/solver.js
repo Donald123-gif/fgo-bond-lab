@@ -6,6 +6,10 @@ function matches(traits,e){return !e.clauses.length||e.clauses.some(row=>row.eve
 function masterCost(l){if(l<=90)return 56+Math.floor((l-1)/2);if(l<=109)return 100+Math.floor((l-89)/3);if(l<=126)return 106+Math.floor((l-107)/4);if(l<140)return 111;return 112+Math.floor((l-140)/10)}
 const GUIDANCE_RATE = 25;
 const MAX_BOND_RATE = 500;
+function formationRate(o, front) {
+ const supportIndex = o.order?.indexOf(5) ?? -1;
+ return (front ? 20 : 0) + (supportIndex >= 0 && supportIndex < 3 ? 4 : 0);
+}
 function gain(s, variant, ces, support, o, front) {
  const sources = [];
  let rawRate = 0, flat = 0;
@@ -27,8 +31,7 @@ function gain(s, variant, ces, support, o, front) {
 
  // Formation adjusts the base first. The game floors again after all matching
  // percentage effects, then adds flat bonuses before applying the teapot.
- const supportIndex = o.order?.indexOf(5) ?? -1;
- const positionRate = (front ? 20 : 0) + (supportIndex >= 0 && supportIndex < 3 ? 4 : 0);
+ const positionRate = formationRate(o, front);
  const positionBase = Math.floor(o.base * (100 + positionRate) / 100);
  const rate = Math.min(rawRate, MAX_BOND_RATE);
  // The data encodes rates in tenths of a percent, including 2.5% CEs.
@@ -39,7 +42,7 @@ function gain(s, variant, ces, support, o, front) {
 }
 const grandGroups={saber:['saber'],archer:['archer'],lancer:['lancer'],rider:['rider'],caster:['caster'],assassin:['assassin'],berserker:['berserker'],extra1:['ruler','avenger','moonCancer','shielder'],extra2:['alterEgo','foreigner','pretender','beast','beastEresh','unBeastOlgaMarie']};
 // Compare the borrowed slots jointly with the owned party. A pair can be
-// discarded only if another gives at least its rate AND flat points to every form.
+// discarded only if another guarantees at least its points for every eligible form.
 function solve(data, o, progress = () => {}) {
  const rewardActive = o.grandMode && o.grandMode !== 'off' && o.supportGrand;
  const reward = rewardActive ? o.supportReward : 0;
@@ -59,7 +62,30 @@ function solve(data, o, progress = () => {}) {
  const normalChoices = choices(o.support, o.supportMlb);
  const rewardChoices = choices(reward, o.supportRewardMlb);
  let pairs = [];
- const dominates = (a, b) => a.every((n, i) => n >= b[i]);
+ // Bound all non-borrowed percentage effects before comparing a borrowed
+ // percentage against fixed points. At the rate cap an extra 5% can be worth zero.
+ const ownSlots = o.count - (o.reserveSlots || 0) + Number(!!classes && o.grandReward !== '0');
+ const ownRates = data.ces.filter(c => o.ces[c.id]?.enabled)
+  .map(c => effect(c, o.ces[c.id].mlb).rate).sort((a,b) => b-a);
+ const guideCount = Math.min(o.count, (o.bond15 || []).filter(id => owned.has(id)).length);
+ const minOtherRate = +o.extra || 0;
+ const otherRate = minOtherRate + guideCount * GUIDANCE_RATE
+  + ownRates.slice(0, ownSlots).reduce((sum, rate) => sum + rate, 0);
+ const baseAt = front => Math.floor(o.base * (100 + formationRate(o, front)) / 100);
+ const lowBase = baseAt(o.front >= o.count), highBase = baseAt(o.front > 0);
+ function dominates(a, b) {
+  for (let i = 0; i < a.length; i += 2) {
+   const rate = a[i], rival = b[i], flatAdvantage = a[i+1] - b[i+1];
+   if (rate >= rival && flatAdvantage >= 0) continue;
+   // floor(x + d) - floor(x) >= floor(d), including for a negative d.
+   const delta = rate >= rival
+    ? Math.min(MAX_BOND_RATE, otherRate + rate) - Math.min(MAX_BOND_RATE, otherRate + rival)
+    : Math.min(MAX_BOND_RATE, minOtherRate + rate) - Math.min(MAX_BOND_RATE, minOtherRate + rival);
+   const guaranteed = Math.floor((delta >= 0 ? lowBase : highBase) * Math.round(delta * 10) / 1000);
+   if (guaranteed + flatAdvantage < 0) return false;
+  }
+  return true;
+ }
  for (const normal of normalChoices) {
   for (const extra of rewardChoices) {
    if (normal.id && normal.id === extra.id) continue;
@@ -106,7 +132,14 @@ function solveParty(data,o,progress=()=>{}){
  if(locked.length>N)throw Error('必选从者数量超过自有编队人数。');if(roster.length<N)throw Error('候选从者不足，请增加候选或减少人数。');
  if(o.objective==='target'&&!originalLocked.length)throw Error('优先刷指定从者时，请先将至少一名从者设为必选。');
  const available=data.ces.filter(c=>o.ces[c.id]?.enabled).map(c=>({...c,e:effect(c,o.ces[c.id].mlb)}));
- const required=available.filter(c=>o.ces[c.id].required),optional=available.filter(c=>!o.ces[c.id].required);
+ const required = available.filter(c => o.ces[c.id].required);
+ // All ten Heroic Spirit Portraits have the same cost and unconditional effect.
+ // Required cards keep their identities; only interchangeable optional copies are grouped.
+ const portraits = [], optional = [];
+ for (const c of available.filter(c => !o.ces[c.id].required)) {
+  const portrait = c.cost === 5 && c.e.flat === 50 && !c.e.rate && !c.e.clauses.length && !o.fixedNormalCes?.includes(c.id);
+  (portrait ? portraits : optional).push(c);
+ }
  if(required.length>ceSlots+extraSlot)throw Error('必选礼装超出剩余礼装槽位。');
  let support=data.ces.find(c=>c.id===+o.support);if(support)support={...support,e:effect(support,o.supportMlb)};
  if(grand&&o.supportGrand&&+o.supportReward){
@@ -118,10 +151,25 @@ function solveParty(data,o,progress=()=>{}){
  let best=null,checked=0;const scale=o.objective==='target'?100000000:0;
  const variants=s=>o.forms[s.id]&&o.forms[s.id]!=='auto'?s.variants.filter(v=>v.key===o.forms[s.id]||v.rawKeys?.includes(o.forms[s.id])):s.variants.filter(v=>!v.key.startsWith('costume')||o.costumes);
  function options(s,ces,settings){let rows=[];for(const v of variants(s)){for(let front=0;front<=1;front++){if(front&&!F)continue;if(o.lockedFront?.[s.id]!==undefined&&!!front!==o.lockedFront[s.id])continue;let g=gain(s,v,ces,support,settings,!!front);rows.push({...g,score:g.value*(1+(originalLocked.includes(s.id)?scale:0))})}}return rows}
- function evaluate(ces,rawCost){let reward=null;if(extraSlot){reward=+o.grandReward>0?ces.find(c=>c.id===+o.grandReward):ces.filter(c=>!(o.fixedNormalCes||[]).includes(c.id)).sort((a,b)=>b.cost-a.cost)[0];}if(ces.length-(reward?1:0)>ceSlots)return;let ceCost=rawCost-(reward?.cost||0);checked++;if(checked%25===0)progress(checked);let cap=budget-ceCost;if(cap<0)return;
+ function rewardFor(ces) {
+  if (!extraSlot) return null;
+  if (+o.grandReward > 0) return ces.find(c => c.id === +o.grandReward);
+  return ces.filter(c => !o.fixedNormalCes?.includes(c.id)).sort((a,b) => b.cost-a.cost)[0];
+ }
+ let subsetBest;
+ function evaluate(ces,rawCost){
+  subsetBest = null;
+  const reward = rewardFor(ces);
+  if (ces.length - Number(!!reward) > ceSlots) return;
+  const ceCost = rawCost - (reward?.cost || 0), cap = budget - ceCost;
+  if (cap < 0) return;
+  checked++;
+  if (checked % 25 === 0) progress(checked);
   for (let guides = minGuides; guides <= maxGuides; guides++) {
    evaluateParty(ces, reward, ceCost, cap, guides);
   }
+  if (subsetBest && improves(subsetBest.score, subsetBest.cost, best)) best = subsetBest;
+  return subsetBest;
  }
  const lockedGuides = locked.filter(s => s.guide).length;
  const freeGuides = free.filter(s => s.guide).length;
@@ -176,8 +224,8 @@ function solveParty(data,o,progress=()=>{}){
   for (const st of dp.values()) {
    if (st.n !== N || st.f !== F || st.guides !== guides) continue;
    const cost = st.c + ceCost + (+o.reserveCost || 0);
-   if (!best || st.score > best.score || (st.score === best.score && cost < best.cost)) {
-    best = {score:st.score,total:st.total,team:st.team,ces:ces.filter(c=>c.id!==reward?.id).map(c=>c.id),grandReward:reward?.id||0,grandId,cost,ceCost,guides};
+   if (improves(st.score, cost, subsetBest)) {
+    subsetBest = {score:st.score,total:st.total,team:st.team,ces:ces.filter(c=>c.id!==reward?.id).map(c=>c.id),grandReward:reward?.id||0,grandId,cost,ceCost,guides};
    }
   }
  }
@@ -185,8 +233,43 @@ function solveParty(data,o,progress=()=>{}){
  // still allow distinct owned copies to occupy multiple equipment slots.
  const equivalents = optional.map(c => (o.fixedNormalCes || []).includes(c.id)
   ? 'fixed:' + c.id : JSON.stringify([c.cost,c.e.rate,c.e.flat,c.e.clauses]));
+ function improves(score, cost, previous) {
+  return !previous || score > previous.score || (score === previous.score && cost < previous.cost);
+ }
+ const earning = new Set(roster.filter(s => !s.maxed).map(s => s.id));
+ const priority = new Set(originalLocked.filter(id => earning.has(id)));
+ const maxWeight = Math.min(earning.size, N - locked.filter(s => s.maxed).length) + priority.size * scale;
+
+ function considerPortraits(chosen, rawCost, baseline) {
+  const limit = Math.min(portraits.length, ceSlots + extraSlot - chosen.length);
+  for (let n = 1; n <= limit; n++) {
+   const added = portraits.slice(0,n), ces = [...chosen, ...added];
+   const reward = rewardFor(ces);
+   if (ces.length - Number(!!reward) > ceSlots) continue;
+   const equipmentCost = rawCost + n*5 - (reward?.cost || 0);
+   const sameTeamCost = baseline.cost + equipmentCost - baseline.ceCost;
+   const points = n * 50 * o.tea;
+   // Removing optional portraits frees budget. Even the best team for this
+   // tighter budget cannot exceed the baseline plus every possible recipient's bonus.
+   const upper = baseline.score + maxWeight * points;
+   if (!improves(upper, sameTeamCost, best)) continue;
+   const recipients = baseline.team.filter(g => earning.has(g.id));
+   if (sameTeamCost <= o.cost && recipients.length + priority.size * scale === maxWeight) {
+    // This feasible team attains the bound and was already cheapest at its baseline score.
+    const sources = added.map(c => ({name:c.name,rate:0,flat:50}));
+    best = {...baseline, score:upper, cost:sameTeamCost, ceCost:equipmentCost,
+     ces:ces.filter(c => c !== reward).map(c => c.id), grandReward:reward?.id || 0,
+     total:baseline.total + points * recipients.length,
+     team:baseline.team.map(g => ({...g, value:g.value + (earning.has(g.id) ? points : 0),
+      flat:g.flat + n*50, sources:[...g.sources,...sources]}))};
+   } else {
+    evaluate(ces, rawCost + n*5);
+   }
+  }
+ }
  function walk(start,chosen,cost) {
-  evaluate(chosen,cost);
+  const baseline = evaluate(chosen,cost);
+  if (!baseline) return;
   if (chosen.length >= ceSlots + extraSlot) return;
   const tried = new Set();
   for (let i=start;i<optional.length;i++) {
@@ -195,6 +278,7 @@ function solveParty(data,o,progress=()=>{}){
    const c = optional[i];
    if (cost+c.cost <= budget+(extraSlot?12:0)) walk(i+1,[...chosen,c],cost+c.cost);
   }
+  considerPortraits(chosen, cost, baseline);
  }
  walk(0,required,required.reduce((a,c)=>a+c.cost,0));if(!best)throw Error('当前 Cost 下没有可行队伍。请减少必选项、降低预留费用或提高 Cost 上限。');return {...best,checked};
 }

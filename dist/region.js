@@ -37,7 +37,7 @@
   const portraits = await fetch('portraits-' + region + '.json?v=15');
   if (!portraits.ok) throw Error('portrait catalog unavailable');
   globalThis.FGO_PORTRAITS = await portraits.json();
-  for (const file of ['app','picker','results','teams']) await load(file + '.js?v=20');
+  for (const file of ['app','picker','results','teams']) await load(file + (file === 'app' ? '.js?v=21' : '.js?v=20'));
   if (FGO_DATA.masterCosts) document.getElementById('level').max = Math.max(...Object.keys(FGO_DATA.masterCosts).map(Number));
   document.querySelector('main').inert = false;
   document.querySelector('.mobile-dock').inert = false;
