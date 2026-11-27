@@ -284,3 +284,36 @@ for (const data of [cnCatalog,jpCatalog]) {
  assert.throws(()=>importBBC.convert({...cfg,server:'CNTW'},data,bbcNames,BBC));
 }
 console.log('BBC imports: native, legacy and crown configurations, edited parties, regional round trips and invalid files passed.');
+
+// BBC records occupied slots, while count controls how many the optimizer fills.
+for (const data of [cnCatalog,jpCatalog]) {
+ const ids=[284,38,316,31,239,357].map(no=>data.servants.find(s=>s.no===no).id);
+ const cfg={server:data.region==='CN'?'CH':'JP',assistIdx:3,assistMode:'仅从者',
+  ...Object.fromEntries(Array.from({length:6},(_,i)=>['servant_'+i+'_name',null]))};
+ cfg.servant_0_name=bbcNames[ids[0]];
+ cfg.servant_3_name=bbcNames[ids[2]];
+ cfg.servant_5_name=bbcNames[ids[1]];
+ const read=(previous={},file=cfg)=>importBBC.convert(file,data,bbcNames,BBC,previous).state;
+ const imported=read();
+ assert.equal(imported.inputs.count,'5');
+ assert.equal(read({inputs:{count:'3'}}).inputs.count,'3');
+ assert.equal(read({inputs:{count:'1'}}).inputs.count,'2');
+ const opts5={...opts,owned:ids,count:+imported.inputs.count,manualSlots:imported.manualSlots,order:imported.order,
+  locked:imported.locked,lockedFront:{[ids[0]]:true,[ids[1]]:false},front:3,cost:200,reserveCost:0,
+  reserveSlots:0,ces:{},support:0,extra:0,forms:{},maxed:[],bond15:[],grandMode:'off',objective:'team'};
+ const filled=require('./dist/placement').place(solve(data,opts5),opts5);
+ assert.equal(new Set(filled.map(slot=>slot.servantId)).size,5);
+ assert.ok(filled.every(slot=>slot.servantId));
+ assert.equal(filled[imported.order[0]].servantId,ids[0]);
+ assert.equal(filled[imported.order[5]].servantId,ids[1]);
+ const legacy=structuredClone(imported);
+ delete legacy.bbcBattle.hasPartyCapacity;legacy.inputs.count='2';
+ assert.equal(importBBC.repairLegacyCount(legacy),true);
+ assert.equal(legacy.inputs.count,'5');legacy.inputs.count='2';
+ assert.equal(importBBC.repairLegacyCount(legacy),false);
+ assert.equal(importBBC.repairLegacyCount({inputs:{count:'2'}}),false);
+ const edited=structuredClone(legacy);delete edited.bbcBattle.hasPartyCapacity;edited.manualSlots[0].servantLocked=false;
+ assert.equal(importBBC.repairLegacyCount(edited),false);
+ assert.equal(read({}, {...cfg,servant_0_name:null,servant_5_name:null}).inputs.count,'5');
+}
+console.log('BBC empty slots: full-party autofill, explicit smaller targets, pinned positions and old imports passed.');

@@ -46,6 +46,19 @@ const BBCImport = (() => {
    if(s[k]!==undefined)out[k]=structuredClone(s[k]);
   return out;
  }
+ // Old native imports packed the named members first, locked them, and set the
+ // target equal to their count. Only repair saves that still match that lineup.
+ function repairLegacyCount(s) {
+  const battle=s?.bbcBattle, count=Number(s?.inputs?.count);
+  if(!battle || battle.hasPartyCapacity || !Number.isInteger(count) || count<1 || count>=5) return false;
+  if(s.manualSlots?.length!==5 || s.order?.length!==6 ||
+     !s.manualSlots.every((slot,i)=>i<count ? slot?.servantId && slot.servantLocked===true : slot?.servantId===0 && !slot.ceId)) return false;
+  const party=s.order.map(i=>i===5?s.supportServant:s.manualSlots[i]?.servantId);
+  if(signature(party,s.order.indexOf(5))!==battle.signature) return false;
+  s.inputs.count='5';
+  battle.hasPartyCapacity=true;
+  return true;
+ }
  function convert(cfg,data,names,bridge,previous={}) {
   const region=regionOf(cfg,data.region),warnings=[];
   if(region!==data.region)throw Error('队伍服务器与资料库不一致。');
@@ -53,6 +66,7 @@ const BBCImport = (() => {
   const rich=ext?.region===region && ext.version===1;
   if(ext&&!rich)warnings.push('网页快照版本或服务器不匹配，按 BBC 队伍字段读取。');
   const s=rich?checkedSettings(ext.settings):structuredClone(previous);
+  if(!rich)repairLegacyCount(s);
   const serv=new Map(data.servants.map(c=>[c.id,c]));
   const ce=new Map(data.catalogCes.map(c=>[c.id,c]));
   const bond=new Set(data.ces.map(c=>c.id));
@@ -91,7 +105,7 @@ const BBCImport = (() => {
   });
   if(lineChanged){
    const own=party.filter((p,i)=>i!==assist&&p.id);
-   if(!own.length)throw Error('没有可导入的自有从者，请核对服务器和从者名称。'+warnings.join(' '));
+   if(!own.length && keys.some((key,i)=>i!==assist&&cfg[key]))throw Error('没有可导入的自有从者，请核对服务器和从者名称。'+warnings.join(' '));
    if(new Set(own.map(p=>p.id)).size!==own.length)throw Error('BBC 队伍的自有从者重复，请核对助战位置。');
    const vacant=()=>({servantId:0,ceId:0});
    s.manualSlots=Array.from({length:5},vacant);
@@ -105,7 +119,9 @@ const BBCImport = (() => {
     else if(p.form&&!old && serv.get(p.id).variants.some(v=>v.key===p.form)) (s.forms||={})[p.id]=p.form;
     return idx;
    });
-   inputs.count=String(own.length);
+   // BBC specifies occupied positions, not how many servants the solver should field.
+   const requested=Number(inputs.count);
+   inputs.count=String(Math.max(own.length,Number.isInteger(requested)&&requested>=1&&requested<=5?requested:5));
    s.supportServant=party[assist].id;
    s.locked=s.manualSlots.filter(x=>x.servantId&&(x.servantLocked||!x.autoServant)).map(x=>x.servantId);
    s.owned=[...new Set([...(s.owned||data.servants.filter(x=>!x.mash).map(x=>x.id)),...own.map(x=>x.id)])];
@@ -156,12 +172,12 @@ const BBCImport = (() => {
   // A battle script refers to physical positions. Reuse it only for the same formation.
   const fields=Object.fromEntries(Object.entries(cfg).filter(([k])=>/^round[1-3]_(turns|extraStrategy|extraSkill|turn\d+_(skill|np|strategy|condition))$/.test(k)||['usedServant','specialKeys','master_equip'].includes(k)));
   const effective=key=>inputs[key]==='auto'?s.autoSupport?.[key]||0:Number(inputs[key])||0;
-  s.bbcBattle={signature:signature(party.map(p=>p.id),assist),fields,
+  s.bbcBattle={hasPartyCapacity:true,signature:signature(party.map(p=>p.id),assist),fields,
    gear:[s.supportCombatCe||effective('support'),grand?effective('supportReward'):0],
    grand, assistEquip:structuredClone(now)};
   return {state:s,warnings};
  }
- return {convert,regionOf,shared,signature};
+ return {convert,regionOf,shared,signature,repairLegacyCount};
 })();
 if(typeof module!=='undefined')module.exports=BBCImport;
 

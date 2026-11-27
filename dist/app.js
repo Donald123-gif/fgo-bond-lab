@@ -11,6 +11,9 @@ const pickerStorageKey = D.region === 'CN' ? 'fgo-picker-preferences' : 'fgo-pic
 const initial=()=>({owned:D.servants.filter(s=>!s.mash).map(s=>s.id),locked:[],maxed:[],forms:{},ceLevels:{},order:[0,1,5,2,3,4],svtLevels:{},manualSlots:Array.from({length:5},()=>({servantId:0,ceId:0})),supportServant:0,supportCombatCe:0,ces:Object.fromEntries(D.ces.map(c=>[c.id,{enabled:[1949,2020,2052,2124,2142,2209,2233,2437,330,910,99].includes(c.id),mlb:true,required:false}]))});
 let state=initial(),worker=null,last=null,dirty=false;
 try{const saved=JSON.parse(localStorage.getItem(partyStorageKey));if(saved){state={...state,...saved};state.owned=state.owned.filter(id=>D.servants.some(s=>s.id===id));state.locked=state.locked.filter(id=>state.owned.includes(id));state.ces={...initial().ces,...state.ces};if(!saved.manualSlots)state.manualSlots=Array.from({length:5},(_,i)=>({servantId:state.locked[i]||0,ceId:0}));}}catch{}
+if (BBCImport.repairLegacyCount(state)) {
+ try {localStorage.setItem(partyStorageKey,JSON.stringify(state));} catch {}
+}
 // Older saves only had a generic cap flag. Keep that choice without inferring an unlock.
 if (!Array.isArray(state.bond15)) state.bond15 = [];
 if(!Array.isArray(state.order)||state.order.length!==6||new Set(state.order).size!==6||state.order.some(x=>!Number.isInteger(x)||x<0||x>5))state.order=[0,1,5,2,3,4];
